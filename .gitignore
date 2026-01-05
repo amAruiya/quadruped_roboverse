@@ -1,0 +1,8 @@
+/third_party/
+/.vscode/
+/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+/docs/
+/get_started/
