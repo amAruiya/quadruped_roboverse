@@ -22,6 +22,88 @@ ScenarioCfg → get_handler(scenario) → BaseSimHandler → simulate() → get_
                                               set_dof_targets(actions)
 ```
 
+## MyRobot 架构规划
+
+### 模块结构
+```
+MyRobot/
+├─ configs/           # 配置模块
+│   ├─ task_cfg.py    # TaskCfg 及所有子配置
+│   └─ locomotion_task_cfg.py
+├─ callbacks/         # 回调模块（按生命周期分类）
+│   ├─ setup/         # terrain_randomizer 等
+│   ├─ reset/         # random_state, terrain_level
+│   ├─ terminate/     # contact, orientation
+│   ├─ pre_step/      # action processing
+│   ├─ in_step/       # push_robots 等扰动
+│   └─ post_step/     # curriculum
+├─ terrain/           # 地形系统
+│   ├─ terrain_cfg.py
+│   ├─ terrain_generator.py  # 纯算法，生成高度图/网格
+│   └─ terrain_randomizer.py # 绑定 handler，注入地形
+├─ tasks/             # 任务实现
+│   ├─ base_task.py   # BaseLocomotionTask
+│   └─ locomotion_task.py
+├─ rewards/           # 奖励函数库
+├─ runners/           # PPO 训练循环（后续）
+└─ scripts/           # train.py, play.py
+```
+
+### 配置分离原则
+| 配置类型 | 职责 | 使用时机 |
+|----------|------|----------|
+| `ScenarioCfg` | 场景创建（robot, scene, objects, cameras, lights） | handler.launch() |
+| `TaskCfg` | 任务逻辑（env, sim, control, rewards, terrain, domain_rand） | task.__init__() |
+
+**地形配置特殊处理**：
+- `ScenarioCfg.scene.ground_type`：只管 `"plane"` / `"none"`（简单地面）
+- `TaskCfg.terrain`：声明复杂地形需求（heightfield/trimesh/curriculum）
+- `TerrainGenerator`：纯算法类，生成地形数据
+- `TerrainRandomizer`：作为 `setup_callback`，绑定 handler 后注入地形
+
+### 回调系统
+
+| 回调类型 | 触发时机 | 签名 |
+|----------|----------|------|
+| `setup` | `__init__` 时，handler 就绪后 | `fn(task, **kwargs) -> None` |
+| `reset` | `reset(env_ids)` 时 | `fn(task, env_ids: Tensor, **kwargs) -> None` |
+| `terminate` | 每步检查终止条件 | `fn(task, env_states, **kwargs) -> BoolTensor` |
+| `pre_step` | `step()` 开始，动作处理前 | `fn(task, actions, **kwargs) -> Tensor` |
+| `in_step` | decimation 循环内 | `fn(task, step_idx, **kwargs) -> None` |
+| `post_step` | simulate() 后，计算奖励前 | `fn(task, env_states, **kwargs) -> None` |
+
+### Task 生命周期
+```python
+__init__(scenario, task_cfg)
+    ├─ super().__init__(scenario)     # handler.launch()
+    ├─ _parse_cfg(task_cfg)
+    ├─ _init_buffers()
+    ├─ _prepare_reward_functions()
+    └─ _run_setup_callbacks()         # TerrainRandomizer 在此执行
+
+reset(env_ids)
+    ├─ _reset_idx(env_ids)
+    ├─ _run_reset_callbacks(env_ids)
+    └─ _observation() → obs
+
+step(action)
+    ├─ _pre_physics_step(action)      # pre_step_callback
+    ├─ for _ in range(decimation):
+    │      ├─ _in_physics_step()      # in_step_callback
+    │      └─ handler.simulate()
+    └─ _post_physics_step()
+           ├─ _check_termination()    # terminate_callback
+           ├─ _compute_reward()
+           └─ _run_post_callbacks()   # post_step_callback
+```
+
+### 预留扩展接口
+| 模块 | 预留字段 | 说明 |
+|------|----------|------|
+| `TerrainCfg` | `mesh_type`, `curriculum`, `proportions` | 地形类型/课程学习 |
+| `DomainRandCfg` | `randomize_friction/mass/kp_kd`, `push_robots` | 域随机化 |
+| `CurriculumCfg` | `enabled`, `funcs` | 课程学习函数 |
+
 ## 关键参考
 
 ### `example_RMA/`（重要参考，禁止直接运行）
@@ -36,8 +118,8 @@ ScenarioCfg → get_handler(scenario) → BaseSimHandler → simulate() → get_
 ### `roboverse_pack/` 和 `roboverse_learn/`
 这两个包实现较为臃肿。编写代码时可参考其中 `unitree_rl` 相关文件的实现思路，但**不要照搬其冗余逻辑**。
 
-### `MyRobot/`（待构建）
-我们自己的四足机器人开发包，RL 工作流尚未确立。
+### `MyRobot/`（构建中）
+四足机器人开发包，基于 metasim handler 实现后端无关的 RL 训练。
 
 ## 开发环境
 
