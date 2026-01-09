@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from metasim.scenario.scenario import ScenarioCfg
 from metasim.scenario.simulator_params import SimParamCfg
+from metasim.utils.setup_util import get_robot
 
 from MyRobot.configs.task_cfg import BaseTaskCfg
 
@@ -20,9 +21,25 @@ def task_cfg_to_scenario(task_cfg: BaseTaskCfg) -> ScenarioCfg:
     Returns:
         场景配置对象
     """
+    # 解析机器人配置
+    if isinstance(task_cfg.robots, str):
+        # 字符串格式,使用 get_robot 解析
+        robots = [get_robot(task_cfg.robots)]
+    elif isinstance(task_cfg.robots, list):
+        # 列表格式,逐个解析
+        robots = []
+        for robot in task_cfg.robots:
+            if isinstance(robot, str):
+                robots.append(get_robot(robot))
+            else:
+                robots.append(robot)
+    else:
+        # 单个 RobotCfg 对象
+        robots = [task_cfg.robots]
+
     scenario = ScenarioCfg(
         # 机器人配置
-        robots=task_cfg.robots if isinstance(task_cfg.robots, list) else [task_cfg.robots],
+        robots=robots,
         
         # 物体和场景
         objects=task_cfg.objects,

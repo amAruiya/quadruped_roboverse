@@ -162,6 +162,7 @@ def get_robot(robot_name: str) -> RobotCfg:
     # Search across both official and example robot config packages (union)
     candidate_packages = [
         "roboverse_pack.robots",
+        "MyRobot.robots",
         # "metasim.example.example_pack.robots",
     ]
     cwd = os.getcwd()
