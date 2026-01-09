@@ -17,17 +17,19 @@ from metasim.task.rl_task import RLTaskEnv
 from metasim.types import TensorState
 from metasim.utils.state import RobotState
 
-from MyRobot.configs.base.task_cfg import BaseTaskCfg
+from MyRobot.configs.task_cfg import BaseTaskCfg
+from MyRobot.utils.helper import task_cfg_to_scenario
 
 
 class BaseLocomotionTask(RLTaskEnv):
     """四足机器人运动任务基类。
 
-    该类封装了 metasim handler，提供与 example_RMA 兼容的接口，
+    该类封装了 metasim handler,提供与 example_RMA 兼容的接口,
     同时保持后端无关性。
 
     生命周期：
-        __init__(scenario, task_cfg)
+        __init__(task_cfg)
+            ├─ _build_scenario(task_cfg)  # 构建 scenario
             ├─ super().__init__(scenario)     # 创建 handler
             ├─ _parse_cfg(task_cfg)
             ├─ _init_buffers()
@@ -61,14 +63,12 @@ class BaseLocomotionTask(RLTaskEnv):
 
     def __init__(
         self,
-        scenario: ScenarioCfg,
         cfg: BaseTaskCfg,
         device: str | torch.device | None = None,
     ) -> None:
         """初始化运动任务。
 
         Args:
-            scenario: metasim 场景配置
             cfg: 任务配置
             device: 计算设备
         """
@@ -79,6 +79,9 @@ class BaseLocomotionTask(RLTaskEnv):
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
+
+        # 从任务配置构建场景配置
+        scenario = task_cfg_to_scenario(cfg)
 
         # 初始化父类（会调用 handler.launch()）
         super().__init__(scenario, device)

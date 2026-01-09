@@ -18,6 +18,11 @@ from typing import Callable, Literal
 
 from metasim.queries.base import BaseQueryType
 from metasim.utils import configclass
+from metasim.scenario.lights import BaseLightCfg, DistantLightCfg
+from metasim.scenario.objects import BaseObjCfg
+from metasim.scenario.render import RenderCfg
+from metasim.scenario.robot import RobotCfg
+from metasim.scenario.scene import SceneCfg
 
 
 # =============================================================================
@@ -228,19 +233,11 @@ class AssetCfg:
         foot_name: 足部 link 名称模式（用于足部检测）
         penalize_contacts_on: 需要惩罚接触的 body 名称列表
         terminate_after_contacts_on: 接触后终止的 body 名称列表
-        self_collisions: 是否启用自碰撞
-        flip_visual_attachments: 是否翻转视觉附件
-        collapse_fixed_joints: 是否折叠固定关节
-        fix_base_link: 是否固定基座
     """
-    urdf_path: str = "my_robot_description/robots/my_robot.urdf"
+
     foot_name: str = "foot"
     penalize_contacts_on: list[str] | None = None
     terminate_after_contacts_on: list[str] | None = None
-    self_collisions: bool = True
-    flip_visual_attachments: bool = False
-    collapse_fixed_joints: bool = True
-    fix_base_link: bool = False
 
 
 # =============================================================================
@@ -433,7 +430,7 @@ class CallbacksCfg:
 class BaseTaskCfg:
     """运动任务基础配置。
 
-    该配置类整合了所有子配置，用于初始化 BaseLocomotionTask。
+    该配置类整合了所有子配置,用于初始化 BaseLocomotionTask。
 
     Attributes:
         env: 环境配置
@@ -448,6 +445,16 @@ class BaseTaskCfg:
         domain_rand: 域随机化配置（预留）
         curriculum: 课程学习配置（预留）
         callbacks: 回调配置
+        
+        # 场景构建相关
+        robots: 机器人配置（字符串或 RobotCfg 列表）
+        objects: 物体列表
+        scene: 场景配置
+        cameras: 相机列表
+        lights: 灯光列表
+        simulator: 仿真器类型
+        headless: 是否无头模式
+        render: 渲染配置
     """
 
     env: EnvCfg = EnvCfg()
@@ -462,3 +469,16 @@ class BaseTaskCfg:
     domain_rand: DomainRandCfg = DomainRandCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
     callbacks: CallbacksCfg = CallbacksCfg()
+    
+    # =========================================================================
+    # 场景构建配置（从 ScenarioCfg 迁移）
+    # =========================================================================
+    robots: list[RobotCfg | str] | RobotCfg | str = []
+    objects: list[BaseObjCfg] = []
+    scene: SceneCfg | str | None = None
+    cameras: list = []
+    lights: list[BaseLightCfg] = [DistantLightCfg()]
+    
+    simulator: str | None = None
+    headless: bool = False
+    render: RenderCfg | None = None
