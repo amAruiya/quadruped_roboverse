@@ -52,7 +52,7 @@ def _discover_task_modules() -> None:
     discovery due to one bad module.
     """
     packages_to_scan = [
-        "metasim.example.example_pack.tasks",
+        # "metasim.example.example_pack.tasks",
         "roboverse_pack.tasks",
     ]
     if os.environ.get("METASIM_TASK_PACKAGES", None):

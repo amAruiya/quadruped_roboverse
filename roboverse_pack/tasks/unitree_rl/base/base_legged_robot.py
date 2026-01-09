@@ -393,7 +393,8 @@ class LeggedRobotTask(AgentTask):
 
     def _get_initial_states(self):
         """Return list of per-env initial states derived from config."""
-        sorted_joint_names = self.handler.get_joint_names(self.robot.name, sort=True)
+        raw_joint_names = self.handler.get_joint_names(self.robot.name)
+        sorted_joint_names = sorted(raw_joint_names)
 
         robot_state = self.cfg.initial_states.robots[self.robot.name]
         pos = robot_state.get("pos", [0.0, 0.0, 0.5])

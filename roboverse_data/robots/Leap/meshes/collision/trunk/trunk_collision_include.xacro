@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+<xacro:macro name="trunk_collision">
+
+    <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="/root/legged_ws/src/legged_control/legged_examples/legged_unitree/legged_unitree_description/meshes/Leap/collision/trunk/trunk000.obj" scale="1 1 1"/>
+        </geometry>
+    </collision>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="/root/legged_ws/src/legged_control/legged_examples/legged_unitree/legged_unitree_description/meshes/Leap/collision/trunk/trunk001.obj" scale="1 1 1"/>
+        </geometry>
+    </collision>
+
+    <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="/root/legged_ws/src/legged_control/legged_examples/legged_unitree/legged_unitree_description/meshes/Leap/collision/trunk/trunk002.obj" scale="1 1 1"/>
+        </geometry>
+    </collision>
+</xacro:macro>
+</robot>

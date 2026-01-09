@@ -75,7 +75,7 @@ class MaterialRandomizer(BaseQueryType):
                 self.material_buckets[:, 0], self.material_buckets[:, 1]
             )
 
-        self.body_names = self.handler.get_body_names(self.obj_name, sort=False)
+        self.body_names = self.handler.get_body_names(self.obj_name)
         self.set_body_ids = (
             torch.tensor(
                 [self.body_names.index(_name) for _name in self.set_body_names],
@@ -124,12 +124,31 @@ class MaterialRandomizer(BaseQueryType):
                 )
             )
         elif self.simulator_name == "mujoco":
-            model = self.handler.physics.model
-            num_shapes_per_body = [0] * model.nbody
-            # geom_bodyid[j] = geom j belongs to body geom_bodyid[j]
-            for geom_bodyid in model.geom_bodyid:
-                num_shapes_per_body[geom_bodyid] += 1
-            expected_shapes = model.ngeom
+            model = None
+            # === 尝试 1: 直接获取 physics (单环境模式) ===
+            if hasattr(self.handler, "physics"):
+                model = self.handler.physics.model
+            # === 尝试 2: 从 scenario 获取 model (并行环境常见模式) ===
+            # 注意：scenario 通常保留了构建环境的原始模型信息
+            elif hasattr(self.handler, "scenario"):
+                if hasattr(self.handler.scenario, "model"):
+                    model = self.handler.scenario.model
+                elif hasattr(self.handler.scenario, "mj_model"):
+                    model = self.handler.scenario.mj_model
+            
+            # === 核心逻辑: 如果找到了模型，就计算形状 ===
+            if model is not None:
+                num_shapes_per_body = [0] * model.nbody
+                # geom_bodyid[j] = geom j belongs to body geom_bodyid[j]
+                for geom_bodyid in model.geom_bodyid:
+                    num_shapes_per_body[geom_bodyid] += 1
+                expected_shapes = model.ngeom
+            else:
+                # === 保底策略: 实在找不到模型，就跳过此功能 ===
+                print("\n[WARNING] ParallelHandler isolates the physics model in sub-processes.")
+                print("[WARNING] Could not find local MuJoCo model copy. Skipping material randomization setup.")
+                # 返回空列表，意味着不进行形状相关的随机化，防止程序崩溃
+                return []
         if (
             num_shapes_per_body is not None
             and sum(num_shapes_per_body) != expected_shapes
@@ -334,7 +353,7 @@ class MassRandomizer(BaseQueryType):
 
         self.all_robot_names = [robot.name for robot in self.handler.robots]
         self.all_object_names = [obj.name for obj in self.handler.objects]
-        self.body_names = self.handler.get_body_names(self.obj_name, sort=False)
+        self.body_names = self.handler.get_body_names(self.obj_name)
         self.set_body_ids = (
             torch.tensor(
                 [self.body_names.index(_name) for _name in self.set_body_names],

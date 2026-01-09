@@ -95,6 +95,7 @@ class BaseEnvCfg:
                     "right_wrist_roll_joint": -0.15,
                 },
             },
+            "go2": {"pos": [0.0, 0.0, 0.32]},
         }
 
     initial_states = InitialStates()

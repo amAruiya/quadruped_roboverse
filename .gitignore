@@ -6,3 +6,4 @@
 *.pyd
 /docs/
 /get_started/
+/outputs/
