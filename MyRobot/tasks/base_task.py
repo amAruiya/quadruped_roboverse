@@ -13,15 +13,15 @@ from loguru import logger as log
 from metasim.queries import ContactForces
 from metasim.queries.base import BaseQueryType
 from metasim.scenario.scenario import ScenarioCfg
-from metasim.task.rl_task import RLTaskEnv
+from metasim.task.base import BaseTaskEnv
 from metasim.types import TensorState
-from metasim.utils.state import RobotState
+from metasim.utils.state import RobotState, list_state_to_tensor
 
 from MyRobot.configs.task_cfg import BaseTaskCfg
 from MyRobot.utils.helper import task_cfg_to_scenario
 
 
-class BaseLocomotionTask(RLTaskEnv):
+class BaseLocomotionTask(BaseTaskEnv):
     """四足机器人运动任务基类。
 
     该类封装了 metasim handler,提供与 example_RMA 兼容的接口,
@@ -29,12 +29,12 @@ class BaseLocomotionTask(RLTaskEnv):
 
     生命周期：
         __init__(task_cfg)
-            ├─ _build_scenario(task_cfg)  # 构建 scenario
-            ├─ super().__init__(scenario)     # 创建 handler
-            ├─ _parse_cfg(task_cfg)
-            ├─ _init_buffers()
-            ├─ _prepare_reward_functions()
-            └─ _run_setup_callbacks()
+            ├─ [Phase 1] 基础配置 + 配置解析
+            ├─ [Phase 2] BaseTaskEnv.__init__() → handler.launch()
+            ├─ [Phase 3] 获取 handler 信息
+            ├─ [Phase 4] 完整缓冲区初始化
+            ├─ [Phase 5] 奖励函数 + 回调
+            └─ [Phase 6] 手动 reset()
 
         reset(env_ids)
             ├─ _reset_idx(env_ids)
@@ -66,158 +66,227 @@ class BaseLocomotionTask(RLTaskEnv):
         cfg: BaseTaskCfg,
         device: str | torch.device | None = None,
     ) -> None:
-        """初始化运动任务。
+        """初始化任务。
 
         Args:
             cfg: 任务配置
             device: 计算设备
         """
+        # =====================================================================
+        # Phase 1: 基础配置 + 配置解析
+        # =====================================================================
         self.cfg = cfg
-        self._parse_cfg()
-
-        # 设备设置
+        self.robot_name = cfg.robots
+        self.num_envs = cfg.env.num_envs
+        
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
 
-        # 从任务配置构建场景配置
+        # 解析配置
+        self._parse_cfg()
+
+        # =====================================================================
+        # Phase 2: 构建 scenario 并初始化 handler
+        # =====================================================================
         scenario = task_cfg_to_scenario(cfg)
+        
+        # 直接调用 BaseTaskEnv.__init__，跳过 RLTaskEnv
+        BaseTaskEnv.__init__(self, scenario, device)
+        
+        # 从 BaseTaskEnv 复制的初始状态转换为 tensor
+        self._initial_states = list_state_to_tensor(
+            self.handler, 
+            self._get_initial_states(), 
+            self.device
+        )
 
-        # 初始化父类（会调用 handler.launch()）
-        super().__init__(scenario, device)
-
-        # 机器人名称
-        self.robot_name = self.robot.name if hasattr(self, "robot") else "robot"
-
-        # 获取关节信息
-        self.num_dof = len(self.handler.get_joint_names(self.robot_name))
+        # =====================================================================
+        # Phase 3: 获取 handler 信息
+        # =====================================================================
+        self.robot = scenario.robots[0]  # RLTaskEnv 需要
         self.dof_names = self.handler.get_joint_names(self.robot_name, sort=True)
-
-        # 获取刚体信息
+        self.num_dof = len(self.dof_names)
+        
         self.body_names = self.handler.get_body_names(self.robot_name, sort=True)
         self.num_bodies = len(self.body_names)
 
-        # 初始化任务特定缓冲区
+        # =====================================================================
+        # Phase 4: 完整缓冲区初始化
+        # =====================================================================
         self._init_buffers()
 
-        # 准备奖励函数
+        # =====================================================================
+        # Phase 5: 奖励函数 + 回调
+        # =====================================================================
         self._prepare_reward_functions()
-
-        # 运行 setup 回调
         self._run_setup_callbacks()
 
-        # 标记初始化完成
-        self.init_done = True
+        # =====================================================================
+        # Phase 6: 手动调用 reset
+        # =====================================================================
+        log.info("执行首次 reset...")
+        self.reset(env_ids=list(range(self.num_envs)))
+
+        # 计算观测/动作空间维度（从 RLTaskEnv 复制）
+        states = self.handler.get_states()
+        first_obs = self._observation(states)
+        self.num_obs = first_obs.shape[-1]
+        
+        limits = self.robot.joint_limits
+        self.joint_names = self.handler.get_joint_names(self.robot.name)
+        self._action_low = torch.tensor(
+            [limits[j][0] for j in self.joint_names], 
+            dtype=torch.float32, 
+            device=self.device
+        )
+        self._action_high = torch.tensor(
+            [limits[j][1] for j in self.joint_names], 
+            dtype=torch.float32, 
+            device=self.device
+        )
+        self.num_actions = self._action_low.shape[0]
 
         log.info(
             f"BaseLocomotionTask 初始化完成: {self.num_envs} 环境, "
-            f"{self.num_dof} DOF, 设备: {self.device}"
+            f"{self.num_dof} DOF, 观测维度: {self.num_obs}, 动作维度: {self.num_actions}"
         )
 
     # =========================================================================
-    # 配置解析
+    # Phase 1: 配置解析
     # =========================================================================
 
     def _parse_cfg(self) -> None:
-        """解析配置，计算派生参数。"""
-        self.dt = self.cfg.sim.dt * self.cfg.sim.decimation
-        self.max_episode_length_s = self.cfg.env.episode_length_s
-        self.max_episode_length = int(self.max_episode_length_s / self.dt)
+        """解析任务配置。"""
+        cfg = self.cfg
+
+        # 时间步长
+        self.dt = cfg.sim.dt * cfg.sim.decimation
+        self.max_episode_length = int(cfg.env.episode_length_s / self.dt)
 
         # 观测缩放
-        self.obs_scales = self.cfg.observation.normalization.obs_scales
-        self.command_ranges = self.cfg.commands.ranges
+        self.obs_scales = cfg.observation.normalization.obs_scales
 
-        log.debug(
-            f"配置解析完成: dt={self.dt:.4f}s, "
-            f"max_episode_length={self.max_episode_length}"
-        )
-
-    # =========================================================================
-    # 缓冲区初始化
-    # =========================================================================
-
-    def _init_buffers(self) -> None:
-        """初始化 PyTorch 缓冲区。"""
-        # -------------------- 状态缓冲区 --------------------
-        # 根状态: [pos(3), quat(4), lin_vel(3), ang_vel(3)] = 13
-        self.root_states = torch.zeros(self.num_envs, 13, device=self.device)
-        self.base_pos = self.root_states[:, :3]
-        self.base_quat = self.root_states[:, 3:7]
-        self.base_lin_vel = torch.zeros(self.num_envs, 3, device=self.device)  # 机体坐标系
-        self.base_ang_vel = torch.zeros(self.num_envs, 3, device=self.device)  # 机体坐标系
-
-        # 关节状态
-        self.dof_pos = torch.zeros(self.num_envs, self.num_dof, device=self.device)
-        self.dof_vel = torch.zeros(self.num_envs, self.num_dof, device=self.device)
-
-        # -------------------- 动作缓冲区 --------------------
-        self.actions = torch.zeros(self.num_envs, self.num_dof, device=self.device)
-        self.last_actions = torch.zeros_like(self.actions)
-        self.last_dof_vel = torch.zeros_like(self.dof_vel)
-
-        # -------------------- 命令缓冲区 --------------------
-        self.commands = torch.zeros(
-            self.num_envs, self.cfg.commands.num_commands, device=self.device
-        )
+        # 命令缩放
         self.commands_scale = torch.tensor(
             [self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel],
             device=self.device,
         )
 
-        # -------------------- 时间追踪 --------------------
-        self.episode_length_buf = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
-        self.common_step_counter = 0
+        # 命令范围
+        self.command_ranges = cfg.commands.ranges
 
-        # -------------------- 物理常量 --------------------
-        self.gravity_vec = torch.tensor([0.0, 0.0, -1.0], device=self.device).repeat(
-            self.num_envs, 1
-        )
-        self.projected_gravity = torch.zeros(self.num_envs, 3, device=self.device)
-        self.forward_vec = torch.tensor([1.0, 0.0, 0.0], device=self.device).repeat(
-            self.num_envs, 1
-        )
+        # 重力向量（世界坐标系）
+        self.gravity_vec = torch.tensor(
+            [0.0, 0.0, -1.0], device=self.device
+        ).unsqueeze(0).expand(self.num_envs, -1)
 
-        # -------------------- 默认姿态 --------------------
+        log.debug(f"配置解析完成: dt={self.dt:.4f}s, max_episode_length={self.max_episode_length}")
+
+    # =========================================================================
+    # Phase 4: 缓冲区初始化
+    # =========================================================================
+
+    def _init_buffers(self) -> None:
+        """初始化所有缓冲区。
+        
+        此时 handler 已就绪，num_dof 已知。
+        """
+        num_envs = self.num_envs
+        num_dof = self.num_dof
+        device = self.device
+
+        # -----------------------------------------------------------------
+        # 基座状态
+        # -----------------------------------------------------------------
+        self.base_pos = torch.zeros(num_envs, 3, device=device)
+        self.base_quat = torch.zeros(num_envs, 4, device=device)
+        self.base_quat[:, 3] = 1.0  # w=1 (xyzw 格式)
+        self.base_lin_vel = torch.zeros(num_envs, 3, device=device)
+        self.base_ang_vel = torch.zeros(num_envs, 3, device=device)
+
+        # 投影重力
+        self.projected_gravity = torch.zeros(num_envs, 3, device=device)
+        self.projected_gravity[:, 2] = -1.0  # 初始直立
+
+        # 根状态（13 维：pos(3) + rot(4) + lin_vel(3) + ang_vel(3)）
+        self.root_states = torch.zeros(num_envs, 13, device=device)
+        self.root_states[:, 3] = 1.0  # w=1
+
+        # -----------------------------------------------------------------
+        # 关节状态
+        # -----------------------------------------------------------------
+        self.dof_pos = torch.zeros(num_envs, num_dof, device=device)
+        self.dof_vel = torch.zeros(num_envs, num_dof, device=device)
         self.default_dof_pos = self._compute_default_dof_pos()
+        
+        self.last_dof_pos = torch.zeros_like(self.dof_pos)
+        self.last_dof_vel = torch.zeros_like(self.dof_vel)
 
-        # -------------------- PD 增益 --------------------
-        self.p_gains = torch.zeros(self.num_envs, self.num_dof, device=self.device)
-        self.d_gains = torch.zeros(self.num_envs, self.num_dof, device=self.device)
+        # -----------------------------------------------------------------
+        # 动作
+        # -----------------------------------------------------------------
+        self.actions = torch.zeros(num_envs, num_dof, device=device)
+        self.last_actions = torch.zeros_like(self.actions)
+
+        # -----------------------------------------------------------------
+        # 力矩与 PD 增益
+        # -----------------------------------------------------------------
+        self.torques = torch.zeros(num_envs, num_dof, device=device)
+        self.p_gains = torch.zeros(num_envs, num_dof, device=device)
+        self.d_gains = torch.zeros(num_envs, num_dof, device=device)
         self._init_pd_gains()
 
-        # -------------------- 终止/奖励相关 --------------------
-        self.reset_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        self.time_out_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        # -----------------------------------------------------------------
+        # 接触力
+        # -----------------------------------------------------------------
+        self.contact_forces = torch.zeros(num_envs, self.num_bodies, 3, device=device)
 
-        # -------------------- 扭矩缓冲区 --------------------
-        self.torques = torch.zeros(self.num_envs, self.num_dof, device=self.device)
-        self.torque_limits = torch.ones(self.num_envs, self.num_dof, device=self.device) * 100.0
-
-        # -------------------- 足部相关 --------------------
+        # -----------------------------------------------------------------
+        # 足部
+        # -----------------------------------------------------------------
         self.feet_indices = self._get_feet_indices()
-        if len(self.feet_indices) > 0:
-            self.feet_air_time = torch.zeros(
-                self.num_envs, len(self.feet_indices), device=self.device
-            )
-            self.last_contacts = torch.zeros(
-                self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device
-            )
-        else:
-            self.feet_air_time = torch.zeros(self.num_envs, 0, device=self.device)
-            self.last_contacts = torch.zeros(self.num_envs, 0, dtype=torch.bool, device=self.device)
+        num_feet = len(self.feet_indices)
+        
+        self.feet_air_time = torch.zeros(num_envs, num_feet, device=device)
+        self.last_contacts = torch.zeros(num_envs, num_feet, dtype=torch.bool, device=device)
 
-        # -------------------- 接触力 --------------------
-        self.contact_forces = torch.zeros(self.num_envs, self.num_bodies, 3, device=self.device)
+        # -----------------------------------------------------------------
+        # 命令
+        # -----------------------------------------------------------------
+        self.commands = torch.zeros(num_envs, 3, device=device)
 
-        # -------------------- 噪声向量 --------------------
-        if self.cfg.observation.noise.add_noise:
-            self.noise_scale_vec = self._get_noise_scale_vec()
+        # -----------------------------------------------------------------
+        # 重置与超时标志
+        # -----------------------------------------------------------------
+        self.reset_buf = torch.zeros(num_envs, dtype=torch.bool, device=device)
+        self.time_out_buf = torch.zeros(num_envs, dtype=torch.bool, device=device)
+        self.episode_length_buf = torch.zeros(num_envs, dtype=torch.long, device=device)
 
-        # -------------------- 额外信息 --------------------
+        # -----------------------------------------------------------------
+        # 噪声缩放
+        # -----------------------------------------------------------------
+        self.noise_scale_vec = self._get_noise_scale_vec()
+
+        # -----------------------------------------------------------------
+        # 奖励
+        # -----------------------------------------------------------------
+        self.rew_buf = torch.zeros(num_envs, device=device)
+
+        # -----------------------------------------------------------------
+        # extras（info 字典）
+        # -----------------------------------------------------------------
         self.extras = {}
 
-        log.debug(f"缓冲区初始化完成: {self.num_dof} DOF, {self.num_bodies} bodies")
+        # -----------------------------------------------------------------
+        # 时间计数器
+        # -----------------------------------------------------------------
+        self.common_step_counter = 0
+
+        log.debug(
+            f"缓冲区初始化完成: num_dof={num_dof}, "
+            f"num_bodies={self.num_bodies}, num_feet={num_feet}"
+        )
 
     def _compute_default_dof_pos(self) -> torch.Tensor:
         """计算默认关节位置。"""
@@ -234,7 +303,6 @@ class BaseLocomotionTask(RLTaskEnv):
             return
 
         for i, name in enumerate(self.dof_names):
-            # 按名称模式匹配
             for pattern, kp in self.cfg.control.stiffness.items():
                 if pattern in name:
                     self.p_gains[:, i] = kp
@@ -245,10 +313,7 @@ class BaseLocomotionTask(RLTaskEnv):
                     break
 
     def _get_feet_indices(self) -> torch.Tensor:
-        """获取足部 body 索引。
-
-        子类应覆盖此方法以返回正确的足部索引。
-        """
+        """获取足部 body 索引。"""
         foot_name = self.cfg.asset.foot_name
         feet_indices = []
         for i, name in enumerate(self.body_names):
@@ -261,7 +326,6 @@ class BaseLocomotionTask(RLTaskEnv):
         noise_scales = self.cfg.observation.noise.noise_scales
         noise_level = self.cfg.observation.noise.noise_level
 
-        # 计算观测维度
         obs_dim = self._calculate_obs_dim()
         noise_vec = torch.zeros(obs_dim, device=self.device)
 
@@ -287,15 +351,44 @@ class BaseLocomotionTask(RLTaskEnv):
             noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
         )
         idx += self.num_dof
-        # actions (num_dof, no noise)
 
         return noise_vec
 
     def _calculate_obs_dim(self) -> int:
         """计算观测维度。"""
-        # 基础观测: lin_vel(3) + ang_vel(3) + gravity(3) + commands(3) +
-        #          dof_pos(n) + dof_vel(n) + actions(n)
         return 3 + 3 + 3 + 3 + self.num_dof + self.num_dof + self.num_dof
+
+    # =========================================================================
+    # 初始状态生成（覆盖父类）
+    # =========================================================================
+
+    def _get_initial_states(self) -> list[dict]:
+        """生成每个环境的初始状态。"""
+        init_pos = list(self.cfg.init_state.pos)
+        init_rot = list(self.cfg.init_state.rot)
+
+        joint_names = sorted(self.cfg.init_state.default_joint_angles.keys())
+
+        default_joint_pos = {
+            name: self.cfg.init_state.default_joint_angles[name]
+            for name in joint_names
+        }
+
+        template_state = {
+            "objects": {},
+            "robots": {
+                self.robot_name: {
+                    "pos": torch.tensor(init_pos, dtype=torch.float32),
+                    "rot": torch.tensor(init_rot, dtype=torch.float32),
+                    "vel": torch.zeros(3, dtype=torch.float32),
+                    "ang_vel": torch.zeros(3, dtype=torch.float32),
+                    "dof_pos": default_joint_pos,
+                    "dof_vel": {name: 0.0 for name in joint_names},
+                }
+            },
+        }
+
+        return [template_state.copy() for _ in range(self.cfg.env.num_envs)]
 
     # =========================================================================
     # 奖励函数
@@ -318,7 +411,6 @@ class BaseLocomotionTask(RLTaskEnv):
             if weight == 0:
                 continue
 
-            # 查找对应的奖励函数
             func_name = f"_reward_{name}"
             if hasattr(self, func_name):
                 self.reward_functions.append(getattr(self, func_name))
@@ -339,12 +431,10 @@ class BaseLocomotionTask(RLTaskEnv):
             rew = func()
             total_reward += weight * rew
 
-            # 记录到 extras
             if "reward_terms" not in self.extras:
                 self.extras["reward_terms"] = {}
             self.extras["reward_terms"][name] = rew.mean().item()
 
-        # 只保留正奖励（如果配置了）
         if hasattr(self.cfg, "rewards") and self.cfg.rewards.only_positive_rewards:
             total_reward = torch.clamp(total_reward, min=0.0)
 
@@ -385,8 +475,6 @@ class BaseLocomotionTask(RLTaskEnv):
             return torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
         terminate_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-
-        # 获取当前状态
         env_states = self.handler.get_states()
 
         for name, callback_spec in self.cfg.callbacks.terminate.items():
@@ -443,180 +531,117 @@ class BaseLocomotionTask(RLTaskEnv):
     def _extra_spec(self) -> dict[str, BaseQueryType]:
         """注册额外的查询类型。"""
         extra_spec = {}
-
-        # 注册接触力查询
         extra_spec["contact_forces"] = ContactForces()
 
-        # 添加配置中的查询
         if hasattr(self.cfg, "callbacks") and hasattr(self.cfg.callbacks, "query"):
             extra_spec.update(self.cfg.callbacks.query)
 
         return extra_spec
 
-    def reset(self, env_ids: torch.Tensor | list[int] | None = None) -> tuple[torch.Tensor, dict]:
+    def reset(self, states=None, env_ids=None) -> tuple[torch.Tensor, dict]:
         """重置环境。
-
+        
         Args:
-            env_ids: 要重置的环境索引
-
+            states: 初始状态（可选）
+            env_ids: 要重置的环境索引（可选，默认全部）
+            
         Returns:
-            观测和信息字典
+            (obs, info)
         """
         if env_ids is None:
             env_ids = list(range(self.num_envs))
         elif isinstance(env_ids, torch.Tensor):
             env_ids = env_ids.tolist()
 
-        # 重置选定的环境
-        self._reset_idx(env_ids)
+        # 重置 episode 计数器
+        self._episode_steps[env_ids] = 0
 
-        # 获取新状态
+        # 设置状态（使用传入的 states 或默认初始状态）
+        states_to_set = self._initial_states if states is None else states
+        self.handler.set_states(states=states_to_set, env_ids=env_ids)
+
+        # 更新内部状态
         env_states = self.handler.get_states()
-
-        # 更新缓冲区
         self._update_buffers_from_states(env_states)
-
-        # 计算观测
+        
+        # 重置环境特定状态
+        env_ids_tensor = torch.tensor(env_ids, device=self.device, dtype=torch.long)
+        self._reset_idx(env_ids_tensor)
+        
+        # 生成观测
         obs = self._observation(env_states)
-
+        
         return obs, self.extras
 
-    def _reset_idx(self, env_ids: list[int]) -> None:
-        """重置指定环境。"""
+    def _reset_idx(self, env_ids: torch.Tensor) -> None:
+        """重置指定环境的内部状态。"""
         if len(env_ids) == 0:
             return
 
-        env_ids_tensor = torch.tensor(env_ids, device=self.device, dtype=torch.long)
-
-        # 重置根状态
-        self._reset_root_states(env_ids_tensor)
-
-        # 重置关节状态
-        self._reset_dof_states(env_ids_tensor)
-
-        # 重采样命令
-        self._resample_commands(env_ids_tensor)
+        # 重置命令
+        self._resample_commands(env_ids)
 
         # 重置缓冲区
-        self.episode_length_buf[env_ids_tensor] = 0
-        self.reset_buf[env_ids_tensor] = False
-        self.time_out_buf[env_ids_tensor] = False
-        self.last_actions[env_ids_tensor] = 0.0
-        self.last_dof_vel[env_ids_tensor] = 0.0
+        self.episode_length_buf[env_ids] = 0
+        self.reset_buf[env_ids] = False
+        self.time_out_buf[env_ids] = False
+        self.last_actions[env_ids] = 0.0
+        self.last_dof_vel[env_ids] = 0.0
+        
         if len(self.feet_indices) > 0:
-            self.feet_air_time[env_ids_tensor] = 0.0
-            self.last_contacts[env_ids_tensor] = False
-
-        # 应用状态到仿真器
-        self._apply_reset_states(env_ids)
+            self.feet_air_time[env_ids] = 0.0
+            self.last_contacts[env_ids] = False
 
         # 运行 reset 回调
-        self._run_reset_callbacks(env_ids_tensor)
-
-    def _reset_root_states(self, env_ids: torch.Tensor) -> None:
-        """重置根状态。"""
-        init_state = self.cfg.init_state
-        self.root_states[env_ids, :3] = torch.tensor(init_state.pos, device=self.device)
-        self.root_states[env_ids, 3:7] = torch.tensor(init_state.rot, device=self.device)
-        self.root_states[env_ids, 7:10] = torch.tensor(init_state.lin_vel, device=self.device)
-        self.root_states[env_ids, 10:13] = torch.tensor(init_state.ang_vel, device=self.device)
-
-    def _reset_dof_states(self, env_ids: torch.Tensor) -> None:
-        """重置关节状态。"""
-        self.dof_pos[env_ids] = self.default_dof_pos
-        self.dof_vel[env_ids] = 0.0
+        self._run_reset_callbacks(env_ids)
 
     def _resample_commands(self, env_ids: torch.Tensor) -> None:
         """重采样速度命令。"""
         ranges = self.command_ranges
 
-        # 线速度 x
         self.commands[env_ids, 0] = torch.empty(len(env_ids), device=self.device).uniform_(
             ranges.lin_vel_x[0], ranges.lin_vel_x[1]
         )
-        # 线速度 y
         self.commands[env_ids, 1] = torch.empty(len(env_ids), device=self.device).uniform_(
             ranges.lin_vel_y[0], ranges.lin_vel_y[1]
         )
-        # 角速度 yaw
         self.commands[env_ids, 2] = torch.empty(len(env_ids), device=self.device).uniform_(
             ranges.ang_vel_yaw[0], ranges.ang_vel_yaw[1]
         )
 
-        # 小命令置零
+        # 小于阈值时置零
         self.commands[env_ids, :2] *= (
             torch.norm(self.commands[env_ids, :2], dim=1, keepdim=True) > 0.2
         ).float()
 
-    def _apply_reset_states(self, env_ids: list[int]) -> None:
-        """将重置状态应用到仿真器。"""
-        env_ids_tensor = torch.tensor(env_ids, device=self.device, dtype=torch.long)
-
-        # 构建状态字典
-        robot_state = RobotState(
-            root_state=self.root_states[env_ids_tensor],
-            joint_pos=self.dof_pos[env_ids_tensor],
-            joint_vel=self.dof_vel[env_ids_tensor],
-        )
-
-        states = TensorState(robots={self.robot_name: robot_state}, objects={})
-        self.handler.set_states(states, env_ids=env_ids, zero_vel=False)
-
     def step(self, actions: torch.Tensor) -> tuple:
-        """执行一步仿真。
-
-        Args:
-            actions: 动作张量 (num_envs, num_actions)
-
-        Returns:
-            (obs, reward, terminated, truncated, info)
-        """
-        # 裁剪动作
+        """执行一步仿真。"""
         clip_actions = self.cfg.observation.normalization.clip_actions
         self.actions = torch.clamp(actions, -clip_actions, clip_actions)
 
-        # pre_step 回调
         self.actions = self._run_pre_step_callbacks(self.actions)
 
-        # 执行物理步进
         for i in range(self.cfg.sim.decimation):
-            # in_step 回调
             self._run_in_step_callbacks(i)
-
-            # 计算控制目标
             targets = self._compute_targets()
-
-            # 设置关节目标
-            self.handler.set_dof_targets({self.robot_name: {"dof_pos_target": targets}})
-
-            # 仿真一步
+            # 修复：直接传递 targets tensor，而不是嵌套字典
+            self.handler.set_dof_targets(targets)
             self.handler.simulate()
 
-        # 获取新状态
         env_states = self.handler.get_states()
-
-        # 后处理
         self._post_physics_step(env_states)
-
-        # 计算观测
         obs = self._observation(env_states)
-
-        # 计算奖励
         reward = self._compute_reward()
 
-        # 时间推进
         self.episode_length_buf += 1
         self.common_step_counter += 1
 
-        # 检查超时
         self.time_out_buf = self.episode_length_buf >= self.max_episode_length
 
-        # 处理重置
         done_ids = (self.reset_buf | self.time_out_buf).nonzero(as_tuple=False).flatten()
         if len(done_ids) > 0:
-            self._reset_idx(done_ids.tolist())
+            self.reset(env_ids=done_ids.tolist())
 
-        # 更新动作缓冲区
         self.last_actions = self.actions.clone()
         self.last_dof_vel = self.dof_vel.clone()
 
@@ -627,7 +652,6 @@ class BaseLocomotionTask(RLTaskEnv):
         control_type = self.cfg.control.control_type
 
         if control_type == "P":
-            # 位置控制
             if self.cfg.control.action_offset:
                 targets = self.default_dof_pos + self.cfg.control.action_scale * self.actions
             else:
@@ -635,14 +659,11 @@ class BaseLocomotionTask(RLTaskEnv):
             return targets
 
         elif control_type == "V":
-            # 速度控制（转为位置目标）
             targets = self.dof_pos + self.cfg.control.action_scale * self.actions * self.dt
             return targets
 
         elif control_type == "T":
-            # 扭矩控制
             self.torques = self.cfg.control.action_scale * self.actions
-            # 通过 PD 计算等效目标位置（或直接返回当前位置）
             return self.dof_pos
 
         else:
@@ -650,37 +671,27 @@ class BaseLocomotionTask(RLTaskEnv):
 
     def _post_physics_step(self, env_states: TensorState) -> None:
         """物理步进后的处理。"""
-        # 更新缓冲区
         self._update_buffers_from_states(env_states)
 
-        # 计算机体坐标系下的速度
+        # 提取四元数（假设 xyzw 格式）
+        self.base_quat = self.root_states[:, 3:7]
+        
         self.base_lin_vel = self._quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = self._quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
-
-        # 计算投影重力
         self.projected_gravity = self._quat_rotate_inverse(self.base_quat, self.gravity_vec)
 
-        # 更新命令（如果需要重采样）
         self._update_commands()
-
-        # 检查终止条件
         self._check_termination()
-
-        # post_step 回调
         self._run_post_step_callbacks(env_states)
 
     def _update_buffers_from_states(self, env_states: TensorState) -> None:
         """从仿真状态更新内部缓冲区。"""
         robot_state = env_states.robots[self.robot_name]
 
-        # 更新根状态
         self.root_states = robot_state.root_state
-
-        # 更新关节状态
         self.dof_pos = robot_state.joint_pos
         self.dof_vel = robot_state.joint_vel
 
-        # 更新接触力（如果可用）
         if hasattr(env_states, "contact_forces") and env_states.contact_forces is not None:
             self.contact_forces = env_states.contact_forces.get(self.robot_name, self.contact_forces)
 
@@ -695,10 +706,7 @@ class BaseLocomotionTask(RLTaskEnv):
 
     def _check_termination(self) -> None:
         """检查终止条件。"""
-        # 基础终止条件：倾覆
         self.reset_buf = torch.abs(self.projected_gravity[:, 2]) < 0.5
-
-        # 运行 terminate 回调
         self.reset_buf |= self._run_terminate_callbacks()
 
     # =========================================================================
@@ -721,19 +729,13 @@ class BaseLocomotionTask(RLTaskEnv):
         )
 
         # 添加噪声
-        if self.cfg.observation.noise.add_noise and hasattr(self, "noise_scale_vec"):
+        if self.cfg.observation.noise.add_noise:
             obs += (2 * torch.rand_like(obs) - 1) * self.noise_scale_vec
 
-        # 裁剪
         clip_obs = self.cfg.observation.normalization.clip_observations
         obs = torch.clamp(obs, -clip_obs, clip_obs)
 
         return obs
-
-    @property
-    def num_obs(self) -> int:
-        """观测维度。"""
-        return self._calculate_obs_dim()
 
     @property
     def observation_space(self) -> spaces.Space:
@@ -743,7 +745,7 @@ class BaseLocomotionTask(RLTaskEnv):
     @property
     def action_space(self) -> spaces.Space:
         """动作空间。"""
-        return spaces.Box(low=-1.0, high=1.0, shape=(self.num_dof,))
+        return spaces.Box(low=-1.0, high=1.0, shape=(self.num_actions,))
 
     # =========================================================================
     # 辅助函数
@@ -751,14 +753,20 @@ class BaseLocomotionTask(RLTaskEnv):
 
     @staticmethod
     def _quat_rotate_inverse(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        """将向量从世界坐标系旋转到机体坐标系。"""
+        """将向量从世界坐标系旋转到机体坐标系。
+        
+        假设四元数格式为 [x, y, z, w]
+        """
         q_conj = q.clone()
         q_conj[:, :3] *= -1
         return BaseLocomotionTask._quat_apply(q_conj, v)
 
     @staticmethod
     def _quat_apply(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        """使用四元数旋转向量。"""
+        """使用四元数旋转向量。
+        
+        假设四元数格式为 [x, y, z, w]
+        """
         xyz = q[:, :3]
         w = q[:, 3:4]
         t = 2.0 * torch.cross(xyz, v, dim=-1)

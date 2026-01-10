@@ -1,6 +1,9 @@
 """Leap 四足机器人运动任务配置。
 
-基于 example_RMA/envs/Leap/Leap_config.py 迁移而来。
+本文件实现了 Leap 机器人的任务配置类，包括: 
+- LeapRewardScales: Leap 特有的奖励缩放配置 (覆盖 RewardScales)
+- LeapRewardsCfg: Leap 奖励配置 (覆盖 RewardsCfg)
+- LeapTaskCfg: Leap 机器人运动任务配置 (覆盖 BaseTaskCfg)
 """
 
 from __future__ import annotations
@@ -19,12 +22,48 @@ from MyRobot.configs.task_cfg import (
 )
 
 @configclass
+class LeapRewardScales(RewardScales):
+    """Leap 特有的奖励缩放配置。"""
+
+    # 继承基础奖励
+    tracking_lin_vel: float = 1.0
+    tracking_ang_vel: float = 0.5
+    lin_vel_z: float = -2.0
+    ang_vel_xy: float = -0.05
+    orientation: float = -0.2
+    torques: float = -0.0002
+    dof_vel: float = -0.0
+    dof_acc: float = -2.5e-7
+    action_rate: float = -0.01
+    dof_pos_limits: float = -10.0
+    feet_air_time: float = 1.0
+    collision: float = -1.0
+    termination: float = -0.0
+
+    # Leap 特有奖励
+    leg_effort_symmetry: float = -0.00002
+    hip_pos: float = -1.0
+    thigh_pos: float = -0.8
+    feet_contact_forces: float = -0.01
+    base_height: float = -0.0  # 可选启用
+    stand_still: float = -0.0  # 可选启用
+    stumble: float = -0.0  # 可选启用
+
+@configclass
+class LeapRewardsCfg(RewardsCfg):
+    """Leap 奖励配置。"""
+
+    soft_dof_pos_limit: float = 0.9
+    base_height_target: float = 0.355
+    max_contact_force: float = 100.0
+    ema_alpha: float = 0.4  # 用于 leg_effort_symmetry 的 EMA 系数
+    scales: LeapRewardScales = LeapRewardScales()
+
+
+@configclass
 class LeapTaskCfg(BaseTaskCfg):
     """Leap 机器人运动任务配置。"""
 
-    # =========================================================================
-    # 初始状态配置
-    # =========================================================================
     init_state: InitStateCfg = InitStateCfg(
         pos=(0.0, 0.0, 0.365),
         default_joint_angles={
@@ -47,9 +86,6 @@ class LeapTaskCfg(BaseTaskCfg):
         },
     )
 
-    # =========================================================================
-    # 控制配置
-    # =========================================================================
     control: ControlCfg = ControlCfg(
         control_type="P",
         stiffness={
@@ -66,9 +102,6 @@ class LeapTaskCfg(BaseTaskCfg):
         action_offset=True,
     )
 
-    # =========================================================================
-    # 地形配置
-    # =========================================================================
     terrain: TerrainCfg = TerrainCfg(
         mesh_type="trimesh",
         curriculum=True,
@@ -76,9 +109,6 @@ class LeapTaskCfg(BaseTaskCfg):
         terrain_proportions=[0.3, 0.3, 0.0, 0.1, 0.1, 0.1, 0.1],
     )
 
-    # =========================================================================
-    # 命令配置
-    # =========================================================================
     commands: CommandsCfg = CommandsCfg(
         heading_command=True,
         ranges=CommandRanges(
@@ -89,9 +119,6 @@ class LeapTaskCfg(BaseTaskCfg):
         ),
     )
 
-    # =========================================================================
-    # 域随机化配置
-    # =========================================================================
     domain_rand: DomainRandCfg = DomainRandCfg(
         randomize_friction=True,
         friction_range=(0.5, 1.75),
@@ -103,44 +130,14 @@ class LeapTaskCfg(BaseTaskCfg):
         push_robots=True,
     )
 
-    # =========================================================================
-    # 奖励配置
-    # =========================================================================
-    rewards: RewardsCfg = RewardsCfg(
-        soft_dof_pos_limit=0.9,
-        base_height_target=0.355,
-        scales=RewardScales(
-            # 追踪奖励
-            tracking_lin_vel=1.0,
-            tracking_ang_vel=0.5,
-            # 正则化惩罚
-            lin_vel_z=-2.0,
-            ang_vel_xy=-0.05,
-            orientation=-0.2,
-            torques=-0.0002,
-            dof_vel=-0.0,
-            dof_acc=-2.5e-7,
-            action_rate=-0.01,
-            # Leap 特定奖励
-            dof_pos_limits=-10.0,
-            feet_air_time=1.0,
-            collision=-1.0,
-            termination=-0.0,
-        ),
-    )
+    rewards: LeapRewardsCfg = LeapRewardsCfg()
 
-    # =========================================================================
-    # 资产配置（任务逻辑相关）
-    # =========================================================================
     asset: AssetCfg = AssetCfg(
         foot_name="FOOT",
         penalize_contacts_on=["calf"],
         terminate_after_contacts_on=["base", "thigh"],
     )
 
-    # =========================================================================
-    # 场景构建配置
-    # =========================================================================
     robots: str = "leap"  # 将在 task_cfg_to_scenario 中解析为 RobotCfg
     scene: str = None
     simulator: str = "isaacgym"

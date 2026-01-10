@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+import argparse
+from typing import Any
+
 from metasim.scenario.scenario import ScenarioCfg
 from metasim.scenario.simulator_params import SimParamCfg
 from metasim.utils.setup_util import get_robot
@@ -70,3 +73,96 @@ def task_cfg_to_scenario(task_cfg: BaseTaskCfg) -> ScenarioCfg:
     )
     
     return scenario
+
+
+def get_args() -> argparse.Namespace:
+    """获取命令行参数。
+    包含：
+    --task: 任务名称
+    --sim: 仿真器类型
+    --headless: 无头模式
+    --num_envs: 并行环境数量
+    --device: 计算设备
+    --debug: 调试模式
+    
+    Returns:
+        解析后的参数命名空间
+    """
+    parser = argparse.ArgumentParser(description="MyRobot Task Test")
+    
+    # 任务相关
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="leap",
+        help="任务名称"
+    )
+    
+    # 仿真器相关
+    parser.add_argument(
+        "--sim",
+        type=str,
+        default="isaacgym",
+        choices=["isaacgym", "isaacsim", "mujoco", "genesis"],
+        help="仿真器类型"
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        default=False,
+        help="无头模式（不显示图形界面）"
+    )
+    
+    # 环境相关
+    parser.add_argument(
+        "--num_envs",
+        type=int,
+        default=None,
+        help="并行环境数量，None 表示使用配置文件中的值"
+    )
+    
+    # 设备相关
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="计算设备 (cuda/cpu)，None 表示自动选择"
+    )
+    
+    # 调试相关
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="启用调试模式"
+    )
+
+    args = parser.parse_args()
+    return args
+
+
+def update_task_cfg_from_args(
+    task_cfg: BaseTaskCfg,
+    args: argparse.Namespace
+) -> BaseTaskCfg:
+    """根据命令行参数更新任务配置。
+    
+    Args:
+        task_cfg: 原始任务配置
+        args: 命令行参数
+        
+    Returns:
+        更新后的任务配置
+    """
+    import copy
+    cfg = copy.deepcopy(task_cfg)
+    
+    # 更新环境数量
+    if args.num_envs is not None:
+        cfg.env.num_envs = args.num_envs
+    
+    # 更新仿真器
+    cfg.simulator = args.sim
+    cfg.headless = args.headless
+    
+    return cfg
