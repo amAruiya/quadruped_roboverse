@@ -135,7 +135,6 @@ class CommandsCfg:
         heading_command: 是否使用航向命令
         ranges: 命令范围配置
     """
-
     num_commands: int = 4
     resampling_time: float = 10.0
     heading_command: bool = True
