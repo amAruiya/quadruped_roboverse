@@ -34,13 +34,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/trunk.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/trunk.STL" scale="1 1 1"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/trunk.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/trunk.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -85,14 +85,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/hip.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/hip.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/hip.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/hip.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -113,14 +113,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/thigh.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/thigh.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/thigh.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/thigh.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -141,14 +141,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/calf.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/calf.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/calf.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/calf.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -195,14 +195,14 @@
     <visual>
       <origin rpy="0 3.141592653589793 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/hip.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/hip.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 3.141592653589793 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/hip.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/hip.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -223,14 +223,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/thigh.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/thigh.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/thigh.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/thigh.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -251,14 +251,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/calf.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/calf.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/calf.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/calf.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -305,14 +305,14 @@
     <visual>
       <origin rpy="3.141592653589793 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/hip.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/hip.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="3.141592653589793 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/hip.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/hip.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -333,14 +333,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/thigh_mirror.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/thigh_mirror.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/thigh_mirror.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/thigh_mirror.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -361,14 +361,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/calf.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/calf.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/calf.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/calf.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -415,14 +415,14 @@
     <visual>
       <origin rpy="3.141592653589793 3.141592653589793 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/hip.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/hip.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="3.141592653589793 3.141592653589793 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/hip.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/hip.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -443,14 +443,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/thigh_mirror.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/thigh_mirror.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/thigh_mirror.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/thigh_mirror.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
@@ -471,14 +471,14 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/calf.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/calf.STL" scale="1 1 1"/>
       </geometry>
       <material name="orange"/>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/calf.STL" scale="1 1 1"/>
+        <mesh filename="/home/ubuntu/RoboVerse/roboverse_data/robots/Leap/meshes/calf.STL" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>

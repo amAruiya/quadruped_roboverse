@@ -480,4 +480,4 @@ class BaseTaskCfg:
     
     simulator: str | None = None
     headless: bool = False
-    render: RenderCfg | None = None
+    render: RenderCfg | None = RenderCfg()

@@ -21,6 +21,8 @@ class LeapCfg(RobotCfg):
     name: str = "leap"
     num_joints: int = 12
     urdf_path: str = "roboverse_data/robots/Leap/urdf/Leap.urdf"
+    mjcf_path: str = "roboverse_data/robots/Leap/mjcf/Leap.xml"
+    usd_path: str = "roboverse_data/robots/Leap/usd/Leap.usd"
 
     # ==================== 物理属性 ====================
     enabled_gravity: bool = True

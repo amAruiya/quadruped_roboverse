@@ -1,0 +1,186 @@
+<mujoco model="robot">
+  <default>
+    <default class="robot">
+      <default class="motor">
+        <joint />
+        <motor />
+      </default>
+      <default class="visual">
+        <geom material="visualgeom" contype="0" conaffinity="0" group="2" />
+      </default>
+      <default class="collision">
+        <geom material="collision_material" condim="3" contype="0" conaffinity="1" priority="1" group="1" solref="0.005 1" solimp="0.99 0.999 1e-05" friction="1 0.01 0.01" />
+      </default>
+    </default>
+  </default>
+
+  <compiler angle="radian" />
+
+  <asset>
+    <material name="black" rgba="0.0 0.0 0.0 1.0" />
+    <material name="blue" rgba="0.0 0.0 0.8 1.0" />
+    <material name="green" rgba="0.0 0.8 0.0 1.0" />
+    <material name="grey" rgba="0.2 0.2 0.2 1.0" />
+    <material name="silver" rgba="0.9137254901960784 0.9137254901960784 0.8470588235294118 1.0" />
+    <material name="orange" rgba="1.0 0.4235294117647059 0.0392156862745098 1.0" />
+    <material name="brown" rgba="0.8705882352941177 0.8117647058823529 0.7647058823529411 1.0" />
+    <material name="red" rgba="0.8 0.0 0.0 1.0" />
+    <material name="white" rgba="1.0 1.0 1.0 1.0" />
+    <material name="default_material" rgba="0.7 0.7 0.7 1" />
+    <material name="collision_material" rgba="1.0 0.28 0.1 0.9" />
+    <mesh name="trunk.STL" file="../meshes/trunk.STL" />
+    <mesh name="hip.STL" file="../meshes/hip.STL" />
+    <mesh name="thigh.STL" file="../meshes/thigh.STL" />
+    <mesh name="calf.STL" file="../meshes/calf.STL" />
+    <mesh name="thigh_mirror.STL" file="../meshes/thigh_mirror.STL" />
+  </asset>
+
+  <worldbody>
+    <body name="base" pos="0.00000000 0.00000000 0.42588000" quat="1 0 0 0" childclass="robot">
+      <freejoint name="floating_base" />
+      <geom name="base_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="trunk.STL" scale="1 1 1" class="collision" />
+      <geom name="base_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="default_material" type="mesh" mesh="trunk.STL" scale="1 1 1" class="visual" />
+      <body name="base_imu" pos="0. 0. 0." quat="1.0 0.0 0.0 0.0">
+        <inertial pos="0 0 0" quat="1.0 0.0 0.0 0.0" mass="0.01" diaginertia="1e-06 1e-06 1e-06" />
+        <geom name="base_imu_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="default_material" type="box" size="0.0075 0.0075 0.002" class="visual" />
+      </body>
+      <body name="LF_hip" pos="0.1811 0.0605 0" quat="1.0 0.0 0.0 0.0">
+        <joint name="LF_HAA" type="hinge" ref="0.0" class="motor" range="-0.8028514559173915 0.8028514559173915" axis="1 0 0" />
+        <inertial pos="-8e-05 0.0071 0.0" quat="1.0 0.0 0.0 0.0" mass="0.17925" diaginertia="0.00014 0.00015 0.00023" />
+        <geom name="LF_hip_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="hip.STL" scale="1 1 1" class="collision" />
+        <geom name="LF_hip_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="hip.STL" scale="1 1 1" class="visual" />
+        <body name="LF_thigh" pos="0 0.1192 0" quat="1.0 0.0 0.0 0.0">
+          <joint name="LF_HFE" type="hinge" ref="0.0" class="motor" range="-1.0471975511965976 4.1887902047863905" axis="0 1 0" />
+          <inertial pos="-0.001998 -0.023172 -0.016739" quat="1.0 0.0 0.0 0.0" mass="0.808548" diaginertia="0.002354 0.002456 0.00077" />
+          <geom name="LF_thigh_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="thigh.STL" scale="1 1 1" class="collision" />
+          <geom name="LF_thigh_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="thigh.STL" scale="1 1 1" class="visual" />
+          <body name="LF_calf" pos="0 0 -0.2" quat="1.0 0.0 0.0 0.0">
+            <joint name="LF_KFE" type="hinge" ref="0.0" class="motor" range="-2.6965336943312392 0.01" axis="0 1 0" />
+            <inertial pos="0.008751 -7.8e-05 -0.082263" quat="1.0 0.0 0.0 0.0" mass="0.171507" diaginertia="0.000962 0.000978 2.9e-05" />
+            <geom name="LF_calf_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="calf.STL" scale="1 1 1" class="collision" />
+            <geom name="LF_calf_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="calf.STL" scale="1 1 1" class="visual" />
+            <body name="LF_FOOT" pos="-0.008 0 -0.20588" quat="1.0 0.0 0.0 0.0">
+              <inertial mass="0.06" diaginertia="9.600000000000001e-06 9.600000000000001e-06 9.600000000000001e-06" />
+              <geom name="LF_FOOT_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="sphere" size="0.02" class="collision" />
+              <geom name="LF_FOOT_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="sphere" size="0.01" class="visual" />
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="LH_hip" pos="-0.1811 0.0605 0" quat="1.0 0.0 0.0 0.0">
+        <joint name="LH_HAA" type="hinge" ref="0.0" class="motor" range="-0.8028514559173915 0.8028514559173915" axis="1 0 0" />
+        <inertial pos="8e-05 0.0071 0.0" quat="1.0 0.0 0.0 0.0" mass="0.17925" diaginertia="0.00014 0.00015 0.00023" />
+        <geom name="LH_hip_collision" pos="0 0 0" quat="6.123233995736766e-17 0.0 1.0 0.0" type="mesh" mesh="hip.STL" scale="1 1 1" class="collision" />
+        <geom name="LH_hip_visual" pos="0 0 0" quat="6.123233995736766e-17 0.0 1.0 0.0" material="orange" type="mesh" mesh="hip.STL" scale="1 1 1" class="visual" />
+        <body name="LH_thigh" pos="0 0.1192 0" quat="1.0 0.0 0.0 0.0">
+          <joint name="LH_HFE" type="hinge" ref="0.0" class="motor" range="-1.0471975511965976 4.1887902047863905" axis="0 1 0" />
+          <inertial pos="-0.001998 -0.023172 -0.016739" quat="1.0 0.0 0.0 0.0" mass="0.808548" diaginertia="0.002354 0.002456 0.00077" />
+          <geom name="LH_thigh_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="thigh.STL" scale="1 1 1" class="collision" />
+          <geom name="LH_thigh_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="thigh.STL" scale="1 1 1" class="visual" />
+          <body name="LH_calf" pos="0 0 -0.2" quat="1.0 0.0 0.0 0.0">
+            <joint name="LH_KFE" type="hinge" ref="0.0" class="motor" range="-2.6965336943312392 0.01" axis="0 1 0" />
+            <inertial pos="0.008751 -7.8e-05 -0.082263" quat="1.0 0.0 0.0 0.0" mass="0.171507" diaginertia="0.000962 0.000978 2.9e-05" />
+            <geom name="LH_calf_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="calf.STL" scale="1 1 1" class="collision" />
+            <geom name="LH_calf_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="calf.STL" scale="1 1 1" class="visual" />
+            <body name="LH_FOOT" pos="-0.008 0 -0.20588" quat="1.0 0.0 0.0 0.0">
+              <inertial mass="0.06" diaginertia="9.600000000000001e-06 9.600000000000001e-06 9.600000000000001e-06" />
+              <geom name="LH_FOOT_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="sphere" size="0.02" class="collision" />
+              <geom name="LH_FOOT_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="sphere" size="0.01" class="visual" />
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="RF_hip" pos="0.1811 -0.0605 0" quat="1.0 0.0 0.0 0.0">
+        <joint name="RF_HAA" type="hinge" ref="0.0" class="motor" range="-0.8028514559173915 0.8028514559173915" axis="1 0 0" />
+        <inertial pos="-8e-05 -0.0071 0.0" quat="1.0 0.0 0.0 0.0" mass="0.17925" diaginertia="0.00014 0.00015 0.00023" />
+        <geom name="RF_hip_collision" pos="0 0 0" quat="6.123233995736766e-17 1.0 0.0 0.0" type="mesh" mesh="hip.STL" scale="1 1 1" class="collision" />
+        <geom name="RF_hip_visual" pos="0 0 0" quat="6.123233995736766e-17 1.0 0.0 0.0" material="orange" type="mesh" mesh="hip.STL" scale="1 1 1" class="visual" />
+        <body name="RF_thigh" pos="0 -0.1192 0" quat="1.0 0.0 0.0 0.0">
+          <joint name="RF_HFE" type="hinge" ref="0.0" class="motor" range="-1.0471975511965976 4.1887902047863905" axis="0 1 0" />
+          <inertial pos="-0.001998 0.023172 -0.016739" quat="1.0 0.0 0.0 0.0" mass="0.808548" diaginertia="0.002354 0.002456 0.00077" />
+          <geom name="RF_thigh_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="thigh_mirror.STL" scale="1 1 1" class="collision" />
+          <geom name="RF_thigh_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="thigh_mirror.STL" scale="1 1 1" class="visual" />
+          <body name="RF_calf" pos="0 0 -0.2" quat="1.0 0.0 0.0 0.0">
+            <joint name="RF_KFE" type="hinge" ref="0.0" class="motor" range="-2.6965336943312392 0.01" axis="0 1 0" />
+            <inertial pos="0.008751 -7.8e-05 -0.082263" quat="1.0 0.0 0.0 0.0" mass="0.171507" diaginertia="0.000962 0.000978 2.9e-05" />
+            <geom name="RF_calf_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="calf.STL" scale="1 1 1" class="collision" />
+            <geom name="RF_calf_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="calf.STL" scale="1 1 1" class="visual" />
+            <body name="RF_FOOT" pos="-0.008 0 -0.20588" quat="1.0 0.0 0.0 0.0">
+              <inertial mass="0.06" diaginertia="9.600000000000001e-06 9.600000000000001e-06 9.600000000000001e-06" />
+              <geom name="RF_FOOT_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="sphere" size="0.02" class="collision" />
+              <geom name="RF_FOOT_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="sphere" size="0.01" class="visual" />
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="RH_hip" pos="-0.1811 -0.0605 0" quat="1.0 0.0 0.0 0.0">
+        <joint name="RH_HAA" type="hinge" ref="0.0" class="motor" range="-0.8028514559173915 0.8028514559173915" axis="1 0 0" />
+        <inertial pos="8e-05 -0.0071 0.0" quat="1.0 0.0 0.0 0.0" mass="0.17925" diaginertia="0.00014 0.00015 0.00023" />
+        <geom name="RH_hip_collision" pos="0 0 0" quat="3.749399456654644e-33 6.123233995736766e-17 6.123233995736766e-17 -1.0" type="mesh" mesh="hip.STL" scale="1 1 1" class="collision" />
+        <geom name="RH_hip_visual" pos="0 0 0" quat="3.749399456654644e-33 6.123233995736766e-17 6.123233995736766e-17 -1.0" material="orange" type="mesh" mesh="hip.STL" scale="1 1 1" class="visual" />
+        <body name="RH_thigh" pos="0 -0.1192 0" quat="1.0 0.0 0.0 0.0">
+          <joint name="RH_HFE" type="hinge" ref="0.0" class="motor" range="-1.0471975511965976 4.1887902047863905" axis="0 1 0" />
+          <inertial pos="-0.001998 0.023172 -0.016739" quat="1.0 0.0 0.0 0.0" mass="0.808548" diaginertia="0.002354 0.002456 0.00077" />
+          <geom name="RH_thigh_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="thigh_mirror.STL" scale="1 1 1" class="collision" />
+          <geom name="RH_thigh_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="thigh_mirror.STL" scale="1 1 1" class="visual" />
+          <body name="RH_calf" pos="0 0 -0.2" quat="1.0 0.0 0.0 0.0">
+            <joint name="RH_KFE" type="hinge" ref="0.0" class="motor" range="-2.6965336943312392 0.01" axis="0 1 0" />
+            <inertial pos="0.008751 -7.8e-05 -0.082263" quat="1.0 0.0 0.0 0.0" mass="0.171507" diaginertia="0.000962 0.000978 2.9e-05" />
+            <geom name="RH_calf_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="mesh" mesh="calf.STL" scale="1 1 1" class="collision" />
+            <geom name="RH_calf_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="mesh" mesh="calf.STL" scale="1 1 1" class="visual" />
+            <body name="RH_FOOT" pos="-0.008 0 -0.20588" quat="1.0 0.0 0.0 0.0">
+              <inertial mass="0.06" diaginertia="9.600000000000001e-06 9.600000000000001e-06 9.600000000000001e-06" />
+              <geom name="RH_FOOT_collision" pos="0 0 0" quat="1.0 0.0 0.0 0.0" type="sphere" size="0.02" class="collision" />
+              <geom name="RH_FOOT_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="orange" type="sphere" size="0.01" class="visual" />
+            </body>
+          </body>
+        </body>
+      </body>
+      <site name="base_site" pos="0 0 0" quat="1 0 0 0" />
+      <camera name="front_camera" mode="track" fovy="90.0" quat="4.329780281177467e-17 4.329780281177466e-17 0.7071067811865475 0.7071067811865476" pos="0.0 2.0 0.5" />
+      <camera name="side_camera" mode="track" fovy="90.0" quat="-0.5 -0.4999999999999999 0.5 0.5000000000000001" pos="-2.0 0.0 0.5" />
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="LF_HAA_ctrl" joint="LF_HAA" class="motor" />
+    <motor name="LF_HFE_ctrl" joint="LF_HFE" class="motor" />
+    <motor name="LF_KFE_ctrl" joint="LF_KFE" class="motor" />
+    <motor name="LH_HAA_ctrl" joint="LH_HAA" class="motor" />
+    <motor name="LH_HFE_ctrl" joint="LH_HFE" class="motor" />
+    <motor name="LH_KFE_ctrl" joint="LH_KFE" class="motor" />
+    <motor name="RF_HAA_ctrl" joint="RF_HAA" class="motor" />
+    <motor name="RF_HFE_ctrl" joint="RF_HFE" class="motor" />
+    <motor name="RF_KFE_ctrl" joint="RF_KFE" class="motor" />
+    <motor name="RH_HAA_ctrl" joint="RH_HAA" class="motor" />
+    <motor name="RH_HFE_ctrl" joint="RH_HFE" class="motor" />
+    <motor name="RH_KFE_ctrl" joint="RH_KFE" class="motor" />
+  </actuator>
+
+  <contact>
+    <exclude body1="base" body2="LF_hip" />
+    <exclude body1="LF_hip" body2="LF_thigh" />
+    <exclude body1="LF_thigh" body2="LF_calf" />
+    <exclude body1="LF_calf" body2="LF_FOOT" />
+    <exclude body1="base" body2="LH_hip" />
+    <exclude body1="LH_hip" body2="LH_thigh" />
+    <exclude body1="LH_thigh" body2="LH_calf" />
+    <exclude body1="LH_calf" body2="LH_FOOT" />
+    <exclude body1="base" body2="RF_hip" />
+    <exclude body1="RF_hip" body2="RF_thigh" />
+    <exclude body1="RF_thigh" body2="RF_calf" />
+    <exclude body1="RF_calf" body2="RF_FOOT" />
+    <exclude body1="base" body2="RH_hip" />
+    <exclude body1="RH_hip" body2="RH_thigh" />
+    <exclude body1="RH_thigh" body2="RH_calf" />
+    <exclude body1="RH_calf" body2="RH_FOOT" />
+  </contact>
+
+  <sensor>
+    <framepos name="base_site_pos" objtype="site" objname="base_site" />
+    <framequat name="base_site_quat" objtype="site" objname="base_site" />
+    <framelinvel name="base_site_linvel" objtype="site" objname="base_site" />
+    <frameangvel name="base_site_angvel" objtype="site" objname="base_site" />
+    <velocimeter name="base_site_vel" site="base_site" />
+  </sensor>
+</mujoco>
