@@ -6,6 +6,7 @@ from itertools import chain
 
 import numpy as np
 import torch
+from loguru import logger as log
 
 from metasim.types import Action, CameraState, DictEnvState, ObjectState, RobotState, TensorState
 
@@ -288,6 +289,8 @@ def list_state_to_tensor(
     for name in robot_names:
         jnames = handler.get_joint_names(name)
         bnames = handler.get_body_names(name)
+        log.debug(f"Robot {name} joint names: {jnames}")
+        log.debug(f"Robot {name} body names: {bnames}")
 
         root, body, jpos, jvel = _alloc_state_tensors(n_env, len(bnames) or None, len(jnames) or None, dev)
         jpos_t, jvel_t, jeff_t = (

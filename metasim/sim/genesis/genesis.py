@@ -102,7 +102,6 @@ class GenesisHandler(BaseSimHandler):
         return Ks, c2w
 
     def launch(self) -> None:
-        super().launch()
         gs.init(backend=gs.gpu)  # TODO: add option for cpu
         self.scene_inst = gs.Scene(
             sim_options=gs.options.SimOptions(
@@ -141,7 +140,6 @@ class GenesisHandler(BaseSimHandler):
             )
             self.object_inst_dict[self.robot.name] = self.robot_inst
             self._sanitize_joint_dofs(self.robot_inst)
-
         ## Add objects
         for obj in self.scenario.objects:
             if isinstance(obj, _FileBasedMixin):
@@ -198,6 +196,11 @@ class GenesisHandler(BaseSimHandler):
 
         # Initialize GS background if enabled
         self._build_gs_background()
+
+        
+        super().launch()
+        log.debug("GenesisHandler launched successfully")
+
 
     def _get_states(self, env_ids: list[int] | None = None) -> list[DictEnvState]:
         if env_ids is None:
@@ -345,6 +348,11 @@ class GenesisHandler(BaseSimHandler):
     def _set_states(self, states: list[DictEnvState], env_ids: list[int] | None = None) -> None:
         if env_ids is None:
             env_ids = list(range(self.num_envs))
+
+        if isinstance(states, TensorState):
+            from metasim.utils.state import state_tensor_to_nested
+            states = state_tensor_to_nested(self, states)
+
         states_flat = [state["objects"] | state["robots"] for state in states]
 
         all_objects = self.objects + self.robots
@@ -508,7 +516,15 @@ class GenesisHandler(BaseSimHandler):
 
     def _get_effort_targets(self) -> torch.Tensor | None:
         """Get the effort targets from cached actions."""
-        if not self._actions_cache or not self.robot:
+        if self._actions_cache is None or not self.robot:
+            return None
+        
+        # 情况 2: RL 训练模式（Tensor 输入）
+        if isinstance(self._actions_cache, torch.Tensor):
+            return None  # ← RL 不需要 effort targets
+        
+        # 情况 3: 字典模式但为空列表
+        if isinstance(self._actions_cache, list) and len(self._actions_cache) == 0:
             return None
 
         joint_names = self._get_joint_names(self.robot.name, sort=False)
@@ -557,6 +573,80 @@ class GenesisHandler(BaseSimHandler):
             return joint_names
         else:
             return []
+
+    def _get_body_names(self, obj_name: str, sort: bool = True) -> list[str]:
+        """Get body/link names for Genesis simulator.
+        
+        Args:
+            obj_name: Name of the robot/object
+            sort: Whether to sort names alphabetically
+            
+        Returns:
+            List of body/link names
+        """
+        obj_cfg = self.object_dict[obj_name]
+        if isinstance(obj_cfg, (ArticulationObjCfg, RobotCfg)):
+            obj_inst = self.object_inst_dict[obj_name]
+            
+            # 假设 Genesis 的 RigidEntity 有 links 属性
+            if not hasattr(obj_inst, "links"):
+                return []
+            
+            # 获取所有 link 名称
+            body_names = []
+            for link in obj_inst.links:
+                # 可能需要过滤某些特殊 link
+                # if link.name == "world" or link.name == "base":
+                #     continue
+                body_names.append(link.name)
+            
+            if sort:
+                body_names.sort()
+            
+            return body_names
+        else:
+            # 非关节型物体没有 body
+            return []
+
+    def _get_body_ids_reindex(self, obj_name: str) -> torch.Tensor:
+        """Get body/link reindexing for Genesis simulator.
+        
+        Genesis returns links in their internal order. This method maps them to
+        the sorted order expected by queries (consistent with joint_limits order).
+        
+        Args:
+            obj_name: Name of the robot/object
+            
+        Returns:
+            torch.Tensor: Reindexing array, shape (n_links,)
+        """
+        obj_cfg = self.object_dict[obj_name]
+        if not isinstance(obj_cfg, (ArticulationObjCfg, RobotCfg)):
+            return torch.arange(0, dtype=torch.long, device=self.device)
+        
+        # 检查 scene 是否已构建
+        if not hasattr(self, "object_inst_dict") or obj_name not in self.object_inst_dict:
+            # 场景未构建时,返回默认索引(假设已排序)
+            # 实际索引会在 ContactForces.initialize() 时重新计算
+            log.debug(f"Scene not built yet, returning identity reindex for {obj_name}")
+            # 从配置中获取关节数量作为 link 数量的近似
+            n_joints = len(obj_cfg.joint_limits) if hasattr(obj_cfg, "joint_limits") else 0
+            return torch.arange(n_joints, dtype=torch.long, device=self.device)
+        
+        obj_inst = self.object_inst_dict[obj_name]
+        if not hasattr(obj_inst, "links"):
+            return torch.arange(0, dtype=torch.long, device=self.device)
+        
+        # Get link names in Genesis internal order
+        genesis_link_names = [link.name for link in obj_inst.links]
+        
+        # Get sorted link names (same order as joint_limits in RobotCfg)
+        sorted_link_names = sorted(genesis_link_names)
+        
+        # Create reindex mapping: sorted_order[i] = genesis_order[reindex[i]]
+        reindex = [genesis_link_names.index(name) for name in sorted_link_names]
+        
+        return torch.tensor(reindex, dtype=torch.long, device=self.device)
 
     @property
     def num_envs(self) -> int:

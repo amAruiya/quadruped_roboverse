@@ -12,6 +12,7 @@ import torch
 
 from metasim.queries.base import BaseQueryType
 from metasim.sim.base import BaseSimHandler
+from loguru import logger as log
 
 try:
     import mujoco
@@ -23,7 +24,9 @@ class ContactForces(BaseQueryType):
     """Optional query to fetch per-body net contact forces for each robot.
 
     - For IsaacGym: uses the native net-contact tensor and maps it per-robot in handler indexing order.
-    - For IsaacSim: returns a zero tensor fallback per-robot (hook is in place; replace with real source when available).
+    - For IsaacSim: uses contact sensor to get net forces in world frame.
+    - For MuJoCo: computes net forces from contact data.
+    - For Genesis: uses get_links_net_contact_force() API.
     """
 
     def __init__(self, history_length: int = 3):
@@ -38,6 +41,7 @@ class ContactForces(BaseQueryType):
         self.simulator = handler.scenario.simulator
         self.num_envs = handler.scenario.num_envs
         self.robots = handler.robots
+        
         if self.simulator in ["isaacgym", "mujoco"]:
             self.body_ids_reindex = handler._get_body_ids_reindex(self.robots[0].name)
         elif self.simulator == "isaacsim":
@@ -47,6 +51,9 @@ class ContactForces(BaseQueryType):
                 dtype=torch.int,
                 device=self.handler.device,
             )
+        elif self.simulator == "genesis":
+            # Genesis: 延迟到 initialize() 中计算,因为 scene 可能未构建
+            self.body_ids_reindex = None
         else:
             raise NotImplementedError
         self.initialize()
@@ -54,6 +61,11 @@ class ContactForces(BaseQueryType):
 
     def initialize(self):
         """Warm-start the queue with `history_length` entries."""
+        # Genesis: 在这里计算真实索引(scene 已构建)
+        if self.simulator == "genesis" and self.body_ids_reindex is None:
+            self.body_ids_reindex = self.handler._get_body_ids_reindex(self.robots[0].name)
+            log.debug(f"Genesis contact force body reindex: {self.body_ids_reindex}")
+        
         for _ in range(self.history_length):
             if self.simulator == "isaacgym":
                 self._current_contact_force = isaacgym.gymtorch.wrap_tensor(
@@ -63,8 +75,11 @@ class ContactForces(BaseQueryType):
                 self._current_contact_force = self.handler.contact_sensor.data.net_forces_w
             elif self.simulator == "mujoco":
                 self._current_contact_force = self._get_contact_forces_mujoco()
+            elif self.simulator == "genesis":
+                self._current_contact_force = self._get_contact_forces_genesis()
             else:
                 raise NotImplementedError
+            
             self._contact_forces_queue.append(
                 self._current_contact_force.clone().view(self.num_envs, -1, 3)[:, self.body_ids_reindex, :]
             )
@@ -92,6 +107,29 @@ class ContactForces(BaseQueryType):
 
         return contact_forces
 
+    def _get_contact_forces_genesis(self) -> torch.Tensor:
+        """Get net contact forces for Genesis simulator.
+        
+        Uses the native get_links_net_contact_force() API which returns
+        net force applied on each link due to direct external contacts.
+        
+        Returns:
+            torch.Tensor: shape (n_envs, n_links, 3), contact forces for each link
+        """
+        # 获取机器人实体
+        robot_entity = self.handler.robot_inst
+        
+        # 调用 Genesis API 获取接触力
+        # 返回形状: (n_links, 3) 或 (n_envs, n_links, 3)
+        contact_forces = robot_entity.get_links_net_contact_force()
+        
+        # 确保返回形状为 (n_envs, n_links, 3)
+        if contact_forces.ndim == 2:
+            # 单环境情况: (n_links, 3) -> (1, n_links, 3)
+            contact_forces = contact_forces.unsqueeze(0).expand(self.num_envs, -1, -1)
+        
+        return contact_forces
+
     def __call__(self):
         """Fetch the newest net contact forces and update the queue."""
         if self.simulator == "isaacgym":
@@ -100,8 +138,11 @@ class ContactForces(BaseQueryType):
             self._current_contact_force = self.handler.contact_sensor.data.net_forces_w
         elif self.simulator == "mujoco":
             self._current_contact_force = self._get_contact_forces_mujoco()
+        elif self.simulator == "genesis":
+            self._current_contact_force = self._get_contact_forces_genesis()
         else:
             raise NotImplementedError
+        
         self._contact_forces_queue.append(
             self._current_contact_force.view(self.num_envs, -1, 3)[:, self.body_ids_reindex, :]
         )
