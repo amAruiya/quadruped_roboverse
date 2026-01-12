@@ -26,7 +26,7 @@ class LeapCfg(RobotCfg):
 
     # ==================== 物理属性 ====================
     enabled_gravity: bool = True
-    fix_base_link: bool = False
+    fix_base_link: bool = True
     enabled_self_collisions: bool = False
 
     # ==================== 仿真器特定配置 ====================

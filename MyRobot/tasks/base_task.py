@@ -181,7 +181,7 @@ class BaseLocomotionTask(BaseTaskEnv):
             [0.0, 0.0, -1.0], device=self.device
         ).unsqueeze(0).expand(self.num_envs, -1)
 
-        log.debug(f"配置解析完成: dt={self.dt:.4f}s, max_episode_length={self.max_episode_length}")
+        log.debug(f"配置解析完成: 时间步长 dt={self.dt:.4f}s, 最大回合长度 ={self.max_episode_length}")
 
     # =========================================================================
     # Phase 4: 缓冲区初始化
@@ -618,14 +618,21 @@ class BaseLocomotionTask(BaseTaskEnv):
         """执行一步仿真。"""
         clip_actions = self.cfg.observation.normalization.clip_actions
         self.actions = torch.clamp(actions, -clip_actions, clip_actions)
-
+        log.debug(f"Step {self.common_step_counter}: 动作序列 actions={self.actions[0].tolist()}")
         self.actions = self._run_pre_step_callbacks(self.actions)
 
         for i in range(self.cfg.sim.decimation):
             self._run_in_step_callbacks(i)
-            targets = self._compute_targets()
-            # 修复：直接传递 targets tensor，而不是嵌套字典
-            self.handler.set_dof_targets(targets)
+            
+            if self.cfg.control.control_type in ["P", "V"]:
+                targets = self._compute_targets()
+                self.handler.set_dof_targets(targets)
+            elif self.cfg.control.control_type == "T":
+                torques = self.actions
+                self.handler.set_dof_targets(torques)
+            else:
+                raise ValueError(f"未知控制类型: {self.cfg.control.control_type}")
+            
             self.handler.simulate()
 
         env_states = self.handler.get_states()
@@ -648,7 +655,7 @@ class BaseLocomotionTask(BaseTaskEnv):
         return obs, reward, self.reset_buf, self.time_out_buf, self.extras
 
     def _compute_targets(self) -> torch.Tensor:
-        """计算关节目标位置/扭矩。"""
+        """计算关节目标位置/速度（用于 P/V 控制）。"""
         control_type = self.cfg.control.control_type
 
         if control_type == "P":
@@ -662,13 +669,9 @@ class BaseLocomotionTask(BaseTaskEnv):
             targets = self.dof_pos + self.cfg.control.action_scale * self.actions * self.dt
             return targets
 
-        elif control_type == "T":
-            self.torques = self.cfg.control.action_scale * self.actions
-            return self.dof_pos
-
         else:
-            raise ValueError(f"未知控制类型: {control_type}")
-
+            raise ValueError(f"_compute_targets 只支持 P/V 控制，当前: {control_type}")
+        
     def _post_physics_step(self, env_states: TensorState) -> None:
         """物理步进后的处理。"""
         self._update_buffers_from_states(env_states)

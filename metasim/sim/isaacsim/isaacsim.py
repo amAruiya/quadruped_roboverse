@@ -486,7 +486,13 @@ class IsaacsimHandler(BaseSimHandler):
                 self.sim.set_render_mode(SimulationContext.RenderMode.FULL_RENDERING)
 
     def set_dof_targets(self, actions: torch.Tensor) -> None:
-        # TODO: support set torque
+        """Set DOF targets (position or effort) based on control mode.
+        
+        Args:
+            actions: Joint targets tensor (num_envs, total_dof)
+                    For P/V control: position/velocity targets
+                    For effort control: torque values
+        """
         if isinstance(actions, torch.Tensor):
             actions_tensor = actions
         else:
@@ -502,7 +508,7 @@ class IsaacsimHandler(BaseSimHandler):
             actions_tensor = torch.cat(per_robot_tensors, dim=-1)
 
         offset = 0
-        for robot in self.robots:
+        for robot_idx, robot in enumerate(self.robots):
             robot_inst = self.scene.articulations[robot.name]
             sorted_joint_names = self.get_joint_names(robot.name, sort=True)
             joint_count = len(sorted_joint_names)
@@ -526,7 +532,17 @@ class IsaacsimHandler(BaseSimHandler):
                 continue
 
             joint_targets = robot_actions_sorted[:, action_indices]
-            robot_inst.set_joint_position_target(joint_targets, joint_ids=joint_ids)
+            
+            # Check if this robot uses manual PD control (effort mode)
+            is_manual_pd = self._manual_pd_on[robot_idx]
+            
+            if is_manual_pd:
+                # Effort control: use set_joint_effort_target
+                robot_inst.set_joint_effort_target(joint_targets, joint_ids=joint_ids)
+            else:
+                # Position control: use set_joint_position_target
+                robot_inst.set_joint_position_target(joint_targets, joint_ids=joint_ids)
+            
             robot_inst.write_data_to_sim()
 
     def _simulate(self):

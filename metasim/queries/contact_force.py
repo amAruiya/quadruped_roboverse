@@ -52,8 +52,14 @@ class ContactForces(BaseQueryType):
                 device=self.handler.device,
             )
         elif self.simulator == "genesis":
-            # Genesis: 延迟到 initialize() 中计算,因为 scene 可能未构建
-            self.body_ids_reindex = None
+            # self.body_ids_reindex = None
+            self.body_ids_reindex = self.handler._get_body_ids_reindex(self.robots[0].name)
+
+            log.debug(
+                f"Contact force body reindex:\n"
+                f"  Shape: {self.body_ids_reindex.shape}\n"
+                f"  Values: {self.body_ids_reindex.tolist()}"
+            )
         else:
             raise NotImplementedError
         self.initialize()
@@ -61,10 +67,6 @@ class ContactForces(BaseQueryType):
 
     def initialize(self):
         """Warm-start the queue with `history_length` entries."""
-        # Genesis: 在这里计算真实索引(scene 已构建)
-        if self.simulator == "genesis" and self.body_ids_reindex is None:
-            self.body_ids_reindex = self.handler._get_body_ids_reindex(self.robots[0].name)
-            log.debug(f"Genesis contact force body reindex: {self.body_ids_reindex}")
         
         for _ in range(self.history_length):
             if self.simulator == "isaacgym":

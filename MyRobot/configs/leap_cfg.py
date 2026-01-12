@@ -10,6 +10,7 @@ from __future__ import annotations
 from metasim.utils import configclass
 from MyRobot.configs.task_cfg import (
     AssetCfg,
+    SimCfg,
     BaseTaskCfg,
     CommandRanges,
     CommandsCfg,
@@ -63,6 +64,11 @@ class LeapRewardsCfg(RewardsCfg):
 @configclass
 class LeapTaskCfg(BaseTaskCfg):
     """Leap 机器人运动任务配置。"""
+
+    sim : SimCfg = SimCfg(
+        dt=0.001,
+        decimation=4,
+    )
 
     init_state: InitStateCfg = InitStateCfg(
         pos=(0.0, 0.0, 0.365),

@@ -53,7 +53,7 @@ for env_name in "${ENVS[@]}"; do
         
         # 安装 tensordict 和 GitPython (解决 No module named 'git')
         echo "   正在安装 tensordict 和 GitPython..."
-        pip install tensordict GitPython tensorboard
+        pip install tensordict GitPython tensorboard FreeSimpleGUI
         
         # 特殊处理：修复 metasim 的 packaging 冲突
         if [ "$env_name" == "metasim" ]; then
@@ -66,6 +66,9 @@ for env_name in "${ENVS[@]}"; do
         echo "⚠️  警告: 未找到环境 [$env_name]，跳过。"
     fi
 done
+
+sudo apt update
+sudo apt install tree xsel -y
 
 echo "---------------------------------------"
 echo "🎉 所有环境配置完成！" 

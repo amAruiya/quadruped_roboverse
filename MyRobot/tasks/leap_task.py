@@ -109,8 +109,10 @@ class LeapTask(BaseLocomotionTask):
                 self.hfe_indices.append(self.dof_names.index(joint_name))
         self.hfe_indices = torch.tensor(self.hfe_indices, device=self.device)
 
-        log.debug(f"腿部关节索引: {self.leg_indices}")
-        log.debug(f"HAA 索引: {self.haa_indices}, HFE 索引: {self.hfe_indices}")
+        log.debug("腿部关节索引:")
+        for leg, indices in self.leg_indices.items():
+            log.debug(f"  {leg}: {indices}")
+        log.debug(f"HAA 索引: {self.haa_indices}\n HFE 索引: {self.hfe_indices}")
 
     # =========================================================================
     # 重置（扩展）
