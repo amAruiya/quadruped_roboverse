@@ -68,7 +68,7 @@ for env_name in "${ENVS[@]}"; do
 done
 
 sudo apt update
-sudo apt install tree xsel -y
+sudo apt install tree xsel cloc -y
 
 echo "---------------------------------------"
 echo "🎉 所有环境配置完成！" 

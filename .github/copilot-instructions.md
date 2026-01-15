@@ -8,12 +8,20 @@ RoboVerse 是一个统一的机器人仿真平台，支持**多种物理后端**
 
 ## 架构
 
-### 核心模块：`metasim/`
-- **`scenario/`**：场景、机器人、物体、相机、灯光的配置类
-- **`sim/`**：实现 `BaseSimHandler` 接口的后端处理器
-- **`task/`**：继承 `BaseTaskEnv` 的任务定义，支持 Gymnasium 注册
-- **`types.py`**：核心数据类型（`TensorState`、`DictEnvState`、`Action`）
-- **`constants.py`**：`SimType` 和 `PhysicStateType` 枚举
+### 关键模块：`metasim/`
+| 模块 | 职责 | 关键类型 |
+|------|------|----------|
+| `scenario/` | 场景配置（robot, scene, objects, cameras, lights） | `ScenarioCfg`, `RobotCfg`, `BaseCameraCfg` |
+| `sim/` | 后端处理器实现 | `BaseSimHandler`, `get_handler()` |
+| `task/` | 任务环境定义 | `BaseTaskEnv`, `@register_task` |
+| `types.py` | 核心数据类型 | `TensorState`, `DictEnvState`, `Action` |
+| `constants.py` | 枚举常量 | `SimType`, `PhysicStateType` |
+| `queries/` | 可选查询系统 | `BaseQueryType`, `ContactForces`, `SitePos` |
+
+# 3. 统一接口操作
+handler.set_dof_targets(actions)  # 设置目标
+handler.simulate()                # 前进一步
+states = handler.get_states()     # 获取状态
 
 ### 数据流
 ```
@@ -44,7 +52,6 @@ MyRobot/
 ├─ tasks/             # 任务实现
 │   ├─ base_task.py   # BaseLocomotionTask
 │   └─ locomotion_task.py
-├─ rewards/           # 奖励函数库
 ├─ runners/           # PPO 训练循环（后续）
 └─ scripts/           # train.py, play.py
 ```
@@ -124,11 +131,11 @@ step(action)
 ## 开发环境
 
 ### Conda 环境
-| 环境名 | 用途 |
-|--------|------|
-| `metasim` | IsaacSim 和 MuJoCo |
-| `metasim_genesis` | Genesis |
-| `metasim_isaacgym` | IsaacGym |
+| 环境名 | 后端支持 | 激活命令 |
+|--------|----------|----------|
+| `metasim` | IsaacSim, MuJoCo| `conda activate metasim` |
+| `metasim_genesis` | Genesis | `conda activate metasim_genesis` |
+| `metasim_isaacgym` | IsaacGym | `conda activate metasim_isaacgym` |
 
 ### 常用命令
 ```bash
@@ -165,6 +172,11 @@ class MyConfig:
 2. **日志**：使用 `loguru.logger` 配合 `RichHandler`
 3. **CLI 参数**：使用 `tyro.cli()` 配合 `@configclass`
 4. **状态格式**：批量操作用 `TensorState`，单环境用 `DictEnvState`
+
+## 最小改动原则
+1. **优先扩展**：新增函数/类而非修改现有逻辑
+2. **局部调整**：只改必要的行，保留原有结构
+3. **向后兼容**：添加可选参数而非修改签名
 
 ## 注意事项
 

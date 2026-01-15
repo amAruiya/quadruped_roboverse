@@ -51,6 +51,7 @@ class ScenarioCfg:
     env_spacing: float = 1.0
     decimation: int = 15
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
+    create_ground: bool = True
 
     def __post_init__(self) -> None:
         """Resolve strings & fetch assets; skip until `simulator` is set."""

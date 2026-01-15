@@ -136,7 +136,16 @@ class IsaacgymHandler(BaseSimHandler):
         #     self.optional_queries = {}
         # for query_name, query_type in self.optional_queries.items():
         #     query_type.bind_handler(self)
-        return super().launch()
+
+        super().launch()
+        if not self.headless:
+            log.info("Creating viewer (this may take a moment)...")
+            self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
+            if self.viewer is None:
+                raise Exception("Failed to create viewer")
+            # press 'V' to toggle viewer sync
+            self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_V, "toggle_viewer_sync")
+            log.info("Viewer created successfully")
 
     def _init_gym(self) -> None:
         physics_engine = gymapi.SIM_PHYSX
@@ -171,12 +180,12 @@ class IsaacgymHandler(BaseSimHandler):
         self.sim = self.gym.create_sim(compute_device_id, graphics_device_id, physics_engine, sim_params)
         if self.sim is None:
             raise Exception("Failed to create sim")
-        if not self.headless:
-            self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
-            # press 'V' to toggle viewer sync
-            self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_V, "toggle_viewer_sync")
-            if self.viewer is None:
-                raise Exception("Failed to create viewer")
+        # if not self.headless:
+        #     self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
+        #     # press 'V' to toggle viewer sync
+        #     self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_V, "toggle_viewer_sync")
+        #     if self.viewer is None:
+        #         raise Exception("Failed to create viewer")
 
     def _get_camera_params(self, vinv_matrix, proj_matrix, width, height):
         """Get camera intrinsics and extrinsics from IsaacGym matrices.
@@ -524,9 +533,12 @@ class IsaacgymHandler(BaseSimHandler):
         )  # x, y, z, w order for gymapi.Quat
 
         # add ground plane
-        plane_params = gymapi.PlaneParams()
-        plane_params.normal = gymapi.Vec3(0, 0, 1)
-        self.gym.add_ground(self.sim, plane_params)
+        if self.scenario.create_ground:
+            plane_params = gymapi.PlaneParams()
+            plane_params.normal = gymapi.Vec3(0, 0, 1)
+            self.gym.add_ground(self.sim, plane_params)
+        else:
+            log.info("Skipping ground plane creation as per scenario configuration.")
 
         # get object and robot asset
         obj_assets_list = [self._load_object_asset(obj) for obj in self.objects]

@@ -199,7 +199,7 @@ class GenesisHandler(BaseSimHandler):
 
         
         super().launch()
-        log.debug("GenesisHandler launched successfully")
+        log.success("GenesisHandler launched successfully")
 
 
     def _get_states(self, env_ids: list[int] | None = None) -> list[DictEnvState]:
@@ -418,6 +418,13 @@ class GenesisHandler(BaseSimHandler):
             self.scene_inst.viewer.update()
 
     def _set_dof_targets(self, actions: list[Action] | torch.Tensor) -> None:
+        """Set DOF targets (position or effort) based on control mode.
+        
+        Args:
+            actions: Joint targets
+                    - Tensor (num_envs, total_dof): For VectorEnv (RL training)
+                    - list[Action]: For Dict mode (manual control)
+        """
         self._actions_cache = actions
 
         if not self.robot:
@@ -428,82 +435,84 @@ class GenesisHandler(BaseSimHandler):
         control_mode = self._get_control_mode(obj_name)
         sim_joint_names = self._get_joint_names(obj_name, sort=False)
 
-        # Fast-path: tensor input (VectorEnv). Assume position control.
+        # Fast-path: Tensor input (VectorEnv/RL training)
         if isinstance(actions, torch.Tensor):
             # Map tensor joint order (RobotCfg order) -> simulator joint order
             cfg_joint_order = list(self.object_dict[obj_name].joint_limits.keys())
             idxs = [cfg_joint_order.index(jn) for jn in sim_joint_names if jn in cfg_joint_order]
             if len(idxs) == 0:
                 return
+
             # Select and shape per Genesis expectations
             if actions.dim() == 1:
                 actions = actions.unsqueeze(0)
-            position = actions[:, idxs]
+            targets = actions[:, idxs]
 
+            # Get DOF indices
             dofs_idx_local: list[int] = []
             for j in obj_inst.joints:
                 if j.name in sim_joint_names and j.dofs_idx_local is not None:
                     dofs_idx_local.extend(j.dofs_idx_local)
 
-            if dofs_idx_local:
-                obj_inst.control_dofs_position(position=position, dofs_idx_local=dofs_idx_local)
+            if not dofs_idx_local:
+                return
+
+            # Apply control based on mode
+            if control_mode == "effort":
+                obj_inst.control_dofs_force(force=targets, dofs_idx_local=dofs_idx_local)
+            else:
+                obj_inst.control_dofs_position(position=targets, dofs_idx_local=dofs_idx_local)
             return
 
-        # Dict/list input path
-        joint_names = sim_joint_names
+        # Dict/list input path (manual control)
+        if not isinstance(actions, list) or len(actions) == 0:
+            return
 
+        # Filter joint names based on available data
         if control_mode == "effort":
-            if (
-                isinstance(actions, list)
-                and len(actions) > 0
-                and obj_name in actions[0]
-                and "dof_effort_target" in actions[0][obj_name]
-            ):
-                available_joints = set(actions[0][obj_name]["dof_effort_target"].keys())
-                joint_names = [jn for jn in joint_names if jn in available_joints]
+            available_key = "dof_effort_target"
+        else:
+            available_key = "dof_pos_target"
 
-            effort = [
+        if obj_name not in actions[0] or available_key not in actions[0][obj_name]:
+            return
+
+        available_joints = set(actions[0][obj_name][available_key].keys())
+        joint_names = [jn for jn in sim_joint_names if jn in available_joints]
+
+        if not joint_names:
+            return
+
+        # Extract targets per environment
+        if control_mode == "effort":
+            targets = [
                 [actions[env_id][obj_name]["dof_effort_target"][jn] for jn in joint_names]
                 for env_id in range(self.num_envs)
             ]
-
-            dofs_idx_local = []
-            for j in obj_inst.joints:
-                if j.dofs_idx_local is not None and j.name in joint_names:
-                    dofs_idx_local.extend(j.dofs_idx_local)
-
-            if dofs_idx_local:
-                obj_inst.control_dofs_force(
-                    force=effort,
-                    dofs_idx_local=dofs_idx_local,
-                )
         else:
-            if (
-                isinstance(actions, list)
-                and len(actions) > 0
-                and obj_name in actions[0]
-                and "dof_pos_target" in actions[0][obj_name]
-            ):
-                available_joints = set(actions[0][obj_name]["dof_pos_target"].keys())
-                joint_names = [jn for jn in joint_names if jn in available_joints]
-
-            position = [
+            targets = [
                 [actions[env_id][obj_name]["dof_pos_target"][jn] for jn in joint_names]
                 for env_id in range(self.num_envs)
             ]
 
-            dofs_idx_local = []
-            for j in obj_inst.joints:
-                if j.dofs_idx_local is not None and j.name in joint_names:
-                    dofs_idx_local.extend(j.dofs_idx_local)
+        # Get DOF indices for selected joints
+        dofs_idx_local = []
+        for j in obj_inst.joints:
+            if j.name in joint_names and j.dofs_idx_local is not None:
+                dofs_idx_local.extend(j.dofs_idx_local)
 
-            if dofs_idx_local:
-                if self.num_envs == 1:
-                    position = position[0]
-                obj_inst.control_dofs_position(
-                    position=position,
-                    dofs_idx_local=dofs_idx_local,
-                )
+        if not dofs_idx_local:
+            return
+
+        # Single env: unwrap list
+        if self.num_envs == 1:
+            targets = targets[0]
+
+        # Apply control based on mode
+        if control_mode == "effort":
+            obj_inst.control_dofs_force(force=targets, dofs_idx_local=dofs_idx_local)
+        else:
+            obj_inst.control_dofs_position(position=targets, dofs_idx_local=dofs_idx_local)
 
     def _simulate(self):
         for _ in range(self.scenario.decimation):
@@ -519,9 +528,9 @@ class GenesisHandler(BaseSimHandler):
         if self._actions_cache is None or not self.robot:
             return None
         
-        # 情况 2: RL 训练模式（Tensor 输入）
+        # TODO: 实现genesis的获取target方式
         if isinstance(self._actions_cache, torch.Tensor):
-            return None  # ← RL 不需要 effort targets
+            return None
         
         # 情况 3: 字典模式但为空列表
         if isinstance(self._actions_cache, list) and len(self._actions_cache) == 0:

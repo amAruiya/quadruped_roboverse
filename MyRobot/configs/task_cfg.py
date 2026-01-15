@@ -260,20 +260,75 @@ class TerrainCfg:
         restitution: 恢复系数
         measure_heights: 是否测量高度
         curriculum: 是否启用地形课程学习
-        terrain_proportions: 各类型地形比例（预留）
-        num_rows: 地形行数（预留）
-        num_cols: 地形列数（预留）
+        
+        # 地形网格参数
+        terrain_length: 单个地形块长度（米）
+        terrain_width: 单个地形块宽度（米）
+        num_rows: 地形网格行数
+        num_cols: 地形网格列数
+        horizontal_scale: 水平分辨率（米/像素）
+        vertical_scale: 垂直缩放（米）
+        border_size: 边界平坦区域大小（米）
+        
+        # 地形类型比例
+        terrain_proportions: 各类型地形比例字典，例如：
+            {"flat": 0.2, "rough": 0.3, "stairs": 0.2, "slope": 0.3}
+            如果为 None，则使用单一地形类型
+        
+        # 地形参数范围
+        slope_threshold: 坡度阈值（度）
+        max_init_terrain_level: 初始最大地形难度等级
+        terrain_smoothness: 地形平滑度（0-1）
+        
+        # 课程学习
+        curriculum_type: 课程学习类型（"linear", "exponential", "step"）
+        difficulty_scale: 难度缩放因子
+        
+        # 高度测量
+        measured_points_x: x方向测量点数
+        measured_points_y: y方向测量点数
+        measure_distance_x: x方向测量距离（米）
+        measure_distance_y: y方向测量距离（米）
     """
-    # TODO: 后续可扩展更多地形参数
     mesh_type: Literal["plane", "heightfield", "trimesh"] | None = "plane"
     static_friction: float = 1.0
     dynamic_friction: float = 1.0
     restitution: float = 0.0
     measure_heights: bool = False
     curriculum: bool = False
-    terrain_proportions: list[float] | None = None
+    
+    # 地形网格参数
+    terrain_length: float = 8.0
+    terrain_width: float = 8.0
     num_rows: int = 10
     num_cols: int = 10
+    horizontal_scale: float = 0.1
+    vertical_scale: float = 0.005
+    border_size: float = 2.0
+    
+    # 地形类型比例
+    terrain_proportions: dict[str, float] | None = None
+    
+    # 地形参数范围
+    slope_threshold: float = 30.0
+    max_init_terrain_level: int = 5
+    terrain_smoothness: float = 0.0
+    
+    # 课程学习
+    curriculum_type: Literal["linear", "exponential", "step"] = "linear"
+    difficulty_scale: float = 1.0
+    
+    # 高度测量
+    measured_points_x: int = 10
+    measured_points_y: int = 10
+    measure_distance_x: float = 1.0
+    measure_distance_y: float = 1.0
+
+    step_width: float = 0.4
+    step_depth: float = 0.4
+    
+    env_border_size: float = 0.04
+    """单个地形块的边缘平滑区域大小(米) - 新增参数"""
 
 
 @configclass
@@ -481,3 +536,4 @@ class BaseTaskCfg:
     simulator: str | None = None
     headless: bool = False
     render: RenderCfg | None = RenderCfg()
+    create_ground: bool = True

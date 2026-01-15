@@ -70,6 +70,7 @@ def task_cfg_to_scenario(task_cfg: BaseTaskCfg) -> ScenarioCfg:
         
         # 渲染配置
         render=getattr(task_cfg, "render", None),
+        create_ground = task_cfg.create_ground
     )
     
     return scenario
