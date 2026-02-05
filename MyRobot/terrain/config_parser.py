@@ -132,13 +132,26 @@ class TerrainConfigParser:
         stone_distance = 0.05 if difficulty == 0 else 0.1
         gap_size = 1.0 * difficulty
         pit_depth = 1.0 * difficulty
+
+        # 1. 根据 choice 确定地形类型（使用 keys 而非 hardcoded indices）
+        terrain_type = "flat"
+        start_p = 0.0
+        end_p = 1.0
         
-        # 根据 choice 和累积分布确定地形类型
-        props = self.proportions
+        for i, p in enumerate(self.proportions):
+            if choice < p:
+                terrain_type = self.terrain_types_list[i]
+                end_p = p
+                start_p = 0.0 if i == 0 else self.proportions[i-1]
+                break
         
-        if len(props) >= 1 and choice < props[0]:
-            # 第一类：斜坡（一半向上，一半向下）
-            if choice < props[0] / 2:
+        # 别名映射
+        if terrain_type == "rough": terrain_type = "slope_rough"
+        
+        # 2. 根据类型分发并设置特定参数
+        if terrain_type == "slope":
+            # 50% 概率反向（模仿 RMA 逻辑）
+            if choice < (start_p + end_p) / 2:
                 slope *= -1
             return TerrainParams(
                 terrain_type="slope",
@@ -147,8 +160,7 @@ class TerrainConfigParser:
                 platform_size=3.0,
             )
         
-        elif len(props) >= 2 and choice < props[1]:
-            # 第二类：带噪声的斜坡
+        elif terrain_type == "slope_rough":
             return TerrainParams(
                 terrain_type="slope_rough",
                 difficulty=difficulty,
@@ -156,21 +168,31 @@ class TerrainConfigParser:
                 platform_size=3.0,
             )
         
-        elif len(props) >= 4 and choice < props[3]:
-            # 第三、四类：台阶（上/下）
-            if len(props) >= 3 and choice < props[2]:
+        elif terrain_type == "stairs":
+            # 50% 概率反向
+            if choice < (start_p + end_p) / 2:
                 step_height *= -1
+            t_type = "stairs_up" if step_height > 0 else "stairs_down"
             return TerrainParams(
-                terrain_type="stairs_up" if step_height > 0 else "stairs_down",
+                terrain_type=t_type,
                 difficulty=difficulty,
                 step_height=abs(step_height),
-                step_width=self.cfg.step_width,
-                step_depth=self.cfg.step_depth,
+                step_width=getattr(self.cfg, 'step_width', 0.31),
+                step_depth=getattr(self.cfg, 'step_depth', 0.31),
+                platform_size=3.0,
+            )
+            
+        elif terrain_type in ["stairs_up", "stairs_down"]:
+            return TerrainParams(
+                terrain_type=terrain_type,
+                difficulty=difficulty,
+                step_height=abs(step_height),
+                step_width=getattr(self.cfg, 'step_width', 0.31),
+                step_depth=getattr(self.cfg, 'step_depth', 0.31),
                 platform_size=3.0,
             )
         
-        elif len(props) >= 5 and choice < props[4]:
-            # 第五类：离散障碍物
+        elif terrain_type == "discrete":
             return TerrainParams(
                 terrain_type="discrete",
                 difficulty=difficulty,
@@ -178,8 +200,7 @@ class TerrainConfigParser:
                 platform_size=3.0,
             )
         
-        elif len(props) >= 6 and choice < props[5]:
-            # 第六类：踏脚石
+        elif terrain_type == "stepping_stones":
             return TerrainParams(
                 terrain_type="stepping_stones",
                 difficulty=difficulty,
@@ -188,20 +209,25 @@ class TerrainConfigParser:
                 platform_size=4.0,
             )
         
-        elif len(props) >= 7 and choice < props[6]:
-            # 第七类：缺口
+        elif terrain_type == "gap":
             return TerrainParams(
                 terrain_type="gap",
                 difficulty=difficulty,
                 gap_size=gap_size,
                 platform_size=3.0,
             )
-        
-        else:
-            # 第八类：坑
+            
+        elif terrain_type == "pit":
             return TerrainParams(
                 terrain_type="pit",
                 difficulty=difficulty,
                 pit_depth=pit_depth,
-                platform_size=4.0,
+                platform_size=3.0,
             )
+        
+        # 默认/Fallback
+        return TerrainParams(
+            terrain_type=terrain_type,
+            difficulty=difficulty,
+            platform_size=3.0
+        )

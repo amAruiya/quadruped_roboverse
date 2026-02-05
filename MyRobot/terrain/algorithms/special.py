@@ -1,6 +1,7 @@
 """特殊地形算法（gap, pit, stepping_stones）。"""
 
 import numpy as np
+from isaacgym import terrain_utils
 from .base import TerrainAlgorithm
 
 
@@ -128,52 +129,31 @@ class SteppingStonesAlgorithm(TerrainAlgorithm):
             np.ndarray: 高度图数组，shape=(rows, cols)，dtype=int16
         """
         length, width = shape
-        height_field_raw = np.zeros(shape, dtype=np.int16)
+
+        sub_terrain = terrain_utils.SubTerrain(
+            "sub_terrain",
+            width=width,
+            length=length,
+            vertical_scale=vertical_scale,
+            horizontal_scale=horizontal_scale
+        )
         
-        center_x = length // 2
-        center_y = width // 2
+        # RMA: max_height=0.
+        terrain_utils.stepping_stones_terrain(
+            sub_terrain,
+            stone_size=params.stepping_stones_size,
+            stone_distance=params.stone_distance,
+            max_height=0.,
+            platform_size=params.platform_size
+        )
         
-        platform_size_pixels = int(params.platform_size / horizontal_scale / 2)
-        stone_size_pixels = int(params.stepping_stones_size / horizontal_scale)
-        stone_distance_pixels = int(params.stone_distance / horizontal_scale)
-        
-        # 先设置整个地形为深坑
-        pit_depth_int = int(-1.0 / vertical_scale)
-        height_field_raw[:, :] = pit_depth_int
-        
-        # 中心平台
-        height_field_raw[
-            center_x - platform_size_pixels:center_x + platform_size_pixels,
-            center_y - platform_size_pixels:center_y + platform_size_pixels
-        ] = 0
-        
-        # 放置踏脚石（网格排列）
-        stone_spacing = stone_size_pixels + stone_distance_pixels
-        
-        if stone_spacing > 0:
-            for i in range(env_border, length - env_border, stone_spacing):
-                for j in range(env_border, width - env_border, stone_spacing):
-                    # 检查是否在平台区域附近
-                    stone_center_x = i + stone_size_pixels // 2
-                    stone_center_y = j + stone_size_pixels // 2
-                    
-                    if (abs(stone_center_x - center_x) < platform_size_pixels + stone_spacing and
-                        abs(stone_center_y - center_y) < platform_size_pixels + stone_spacing):
-                        continue
-                    
-                    # 石头高度：接近0（方便踩踏）
-                    max_height = 0.0  # 米
-                    height = int(np.random.uniform(-0.05, max_height) / vertical_scale)
-                    
-                    x_end = min(i + stone_size_pixels, length - env_border)
-                    y_end = min(j + stone_size_pixels, width - env_border)
-                    
-                    height_field_raw[i:x_end, j:y_end] = height
+        height_field_raw = sub_terrain.height_field_raw
         
         # 边缘归零
-        height_field_raw[:env_border, :] = 0
-        height_field_raw[-env_border:, :] = 0
-        height_field_raw[:, :env_border] = 0
-        height_field_raw[:, -env_border:] = 0
-        
+        if env_border > 0:
+            height_field_raw[:env_border, :] = 0
+            height_field_raw[-env_border:, :] = 0
+            height_field_raw[:, :env_border] = 0
+            height_field_raw[:, -env_border:] = 0
+            
         return height_field_raw

@@ -180,6 +180,18 @@ class BaseLocomotionTask(BaseTaskEnv):
         self.gravity_vec = torch.tensor(
             [0.0, 0.0, -1.0], device=self.device
         ).unsqueeze(0).expand(self.num_envs, -1)
+        
+        # 处理地形与地面平面的冲突
+        # 如果使用程序化地形 (heightfield/trimesh)，必须禁用默认的无限地面平面，
+        # 否则负高度地形 (如 stairs_down) 会被地面平面遮挡
+        if cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
+            if cfg.scene is None:
+                from metasim.scenario.scene import SceneCfg
+                cfg.scene = SceneCfg(ground_type="none")
+                log.info(f"Initialized SceneCfg with ground_type='none' for {cfg.terrain.mesh_type} terrain")
+            elif hasattr(cfg.scene, "ground_type") and cfg.scene.ground_type == "plane":
+                cfg.scene.ground_type = "none" 
+                log.info(f"Disabled default ground plane for {cfg.terrain.mesh_type} terrain")
 
         log.debug(f"配置解析完成: 时间步长 dt={self.dt:.4f}s, 最大回合长度 ={self.max_episode_length}")
 

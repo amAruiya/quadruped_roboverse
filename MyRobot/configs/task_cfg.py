@@ -310,7 +310,7 @@ class TerrainCfg:
     terrain_proportions: dict[str, float] | None = None
     
     # 地形参数范围
-    slope_threshold: float = 30.0
+    slope_threshold: float = 0.75
     max_init_terrain_level: int = 5
     terrain_smoothness: float = 0.0
     

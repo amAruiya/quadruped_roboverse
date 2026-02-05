@@ -1,8 +1,8 @@
 """斜坡地形算法。"""
 
 import numpy as np
+from isaacgym import terrain_utils
 from .base import TerrainAlgorithm
-from .basic import RandomUniformNoise
 
 
 class PyramidSlopeAlgorithm(TerrainAlgorithm):
@@ -26,42 +26,30 @@ class PyramidSlopeAlgorithm(TerrainAlgorithm):
             np.ndarray: 高度图数组，shape=(rows, cols)，dtype=int16
         """
         length, width = shape
-        height_field_raw = np.zeros(shape, dtype=np.int16)
+        # 使用 isaacgym.terrain_utils 生成
+        sub_terrain = terrain_utils.SubTerrain(
+            "sub_terrain",
+            width=width,
+            length=length,
+            vertical_scale=vertical_scale,
+            horizontal_scale=horizontal_scale
+        )
         
-        center_x = length // 2
-        center_y = width // 2
+        terrain_utils.pyramid_sloped_terrain(
+            sub_terrain,
+            slope=params.slope,
+            platform_size=params.platform_size
+        )
         
-        platform_size_pixels = int(params.platform_size / horizontal_scale / 2)
+        height_field_raw = sub_terrain.height_field_raw
         
-        # 从边缘到中心计算高度
-        for i in range(length):
-            for j in range(width):
-                # 边缘区域强制归零
-                if i < env_border or i >= length - env_border or \
-                   j < env_border or j >= width - env_border:
-                    height_field_raw[i, j] = 0
-                    continue
-                
-                # 计算到边缘的距离（归一化 0-1）
-                # 从边缘开始，向中心递增
-                dist_to_edge_x = min(i - env_border, length - env_border - 1 - i)
-                dist_to_edge_y = min(j - env_border, width - env_border - 1 - j)
-                
-                # 取最小距离（金字塔形状）
-                dist_to_edge = min(dist_to_edge_x, dist_to_edge_y)
-                
-                # 转换为米
-                dist_meters = dist_to_edge * horizontal_scale
-                
-                # 计算高度：从边缘（0）向中心递增
-                # 在平台区域限制最大高度
-                max_dist = min(center_x - env_border, center_y - env_border) - platform_size_pixels
-                if max_dist > 0:
-                    dist_meters = min(dist_meters, max_dist * horizontal_scale)
-                
-                height = dist_meters * params.slope
-                height_field_raw[i, j] = int(height / vertical_scale)
-        
+        # 边缘归零
+        if env_border > 0:
+            height_field_raw[:env_border, :] = 0
+            height_field_raw[-env_border:, :] = 0
+            height_field_raw[:, :env_border] = 0
+            height_field_raw[:, -env_border:] = 0
+            
         return height_field_raw
 
 
@@ -70,9 +58,6 @@ class RoughSlopeAlgorithm(TerrainAlgorithm):
     
     组合金字塔斜坡 + 随机噪声。
     """
-    
-    def __init__(self):
-        self.slope_algo = PyramidSlopeAlgorithm()
     
     def generate(self, shape, params, horizontal_scale, vertical_scale, env_border=0):
         """生成粗糙斜坡地形（斜坡 + 噪声）。
@@ -87,21 +72,40 @@ class RoughSlopeAlgorithm(TerrainAlgorithm):
         Returns:
             np.ndarray: 高度图数组，shape=(rows, cols)，dtype=int16
         """
-        # 先生成基础斜坡
-        height_field_raw = self.slope_algo.generate(
-            shape, params, horizontal_scale, vertical_scale, env_border
+        length, width = shape
+        
+        # 1. 生成基础斜坡
+        sub_terrain = terrain_utils.SubTerrain(
+            "sub_terrain",
+            width=width,
+            length=length,
+            vertical_scale=vertical_scale,
+            horizontal_scale=horizontal_scale
         )
         
-        # 添加随机噪声
-        height_field_raw = RandomUniformNoise.add_noise(
-            height_field_raw,
+        terrain_utils.pyramid_sloped_terrain(
+            sub_terrain,
+            slope=params.slope,
+            platform_size=params.platform_size
+        )
+        
+        # 2. 添加随机噪声
+        # RMA参数: min_height=-0.05, max_height=0.05, step=0.005, downsampled_scale=0.2
+        terrain_utils.random_uniform_terrain(
+            sub_terrain,
             min_height=-0.05,
             max_height=0.05,
             step=0.005,
-            downsampled_scale=0.2,
-            horizontal_scale=horizontal_scale,
-            vertical_scale=vertical_scale,
-            env_border=env_border
+            downsampled_scale=0.2
         )
         
+        height_field_raw = sub_terrain.height_field_raw
+        
+        # 3. 边缘归零
+        if env_border > 0:
+            height_field_raw[:env_border, :] = 0
+            height_field_raw[-env_border:, :] = 0
+            height_field_raw[:, :env_border] = 0
+            height_field_raw[:, -env_border:] = 0
+            
         return height_field_raw
