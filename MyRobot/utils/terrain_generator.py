@@ -1,4 +1,5 @@
 """地形数据类型定义。"""
+"""已废弃，请使用 MyRobot/terrain/generator.py 中的实现。"""
 
 from __future__ import annotations
 
