@@ -68,9 +68,12 @@ class TerrainInjector(ABC):
     ) -> tuple[np.ndarray, np.ndarray]:
         """将高度图转换为三角网格。
         
-        优先尝试使用 isaacgym.terrain_utils (支持 slope_threshold 修正垂直墙面).
-        如果不可用，使用内部矢量化实现。
-        
+        复现 isaacgym.terrain_utils.convert_heightfield_to_trimesh 的逻辑。
+        修正：
+        1. 修复原库 numpy float3232 属性错误
+        2. 移除对外部库的强制依赖
+        3. 支持 slope_threshold 以修正垂直墙面（对楼梯地形至关重要）
+
         Args:
             height_field_raw: 高度图数据 (int16)
             config: 地形配置
@@ -78,51 +81,60 @@ class TerrainInjector(ABC):
         Returns:
             (vertices, triangles): 顶点和三角形索引
         """
-        # 尝试使用 IsaacGym 的工具函数 (支持垂直面修正)
-        try:
-            from isaacgym import terrain_utils
-            vertices, triangles = terrain_utils.convert_heightfield_to_trimesh(
-                height_field_raw,
-                config.horizontal_scale,
-                config.vertical_scale,
-                config.slope_threshold
-            )
-            return vertices, triangles
-        except (ImportError, AttributeError):
-            pass
-
-        # Fallback: 内部矢量化实现 (无法做垂直面修正，仅标准网格)
         hf = height_field_raw
-        rows, cols = hf.shape
+        num_rows = hf.shape[0]
+        num_cols = hf.shape[1]
         
-        # 1. 生成顶点 (Grid Points)
-        y_indices, x_indices = np.meshgrid(
-            np.arange(cols), np.arange(rows), indexing='xy'
-        )
+        horizontal_scale = config.horizontal_scale
+        vertical_scale = config.vertical_scale
+        slope_threshold = config.slope_threshold
+
+        # 生成网格坐标
+        y = np.linspace(0, (num_cols-1)*horizontal_scale, num_cols)
+        x = np.linspace(0, (num_rows-1)*horizontal_scale, num_rows)
+        yy, xx = np.meshgrid(y, x)
+
+        if slope_threshold is not None:
+            # 缩放阈值以适应高度场原始单位
+            slope_threshold *= horizontal_scale / vertical_scale
+            
+            move_x = np.zeros((num_rows, num_cols))
+            move_y = np.zeros((num_rows, num_cols))
+            move_corners = np.zeros((num_rows, num_cols))
+            
+            # 矢量化计算顶点移动：当坡度过大时，移动顶点以形成垂直面
+            move_x[:num_rows-1, :] += (hf[1:num_rows, :] - hf[:num_rows-1, :] > slope_threshold)
+            move_x[1:num_rows, :] -= (hf[:num_rows-1, :] - hf[1:num_rows, :] > slope_threshold)
+            
+            move_y[:, :num_cols-1] += (hf[:, 1:num_cols] - hf[:, :num_cols-1] > slope_threshold)
+            move_y[:, 1:num_cols] -= (hf[:, :num_cols-1] - hf[:, 1:num_cols] > slope_threshold)
+            
+            move_corners[:num_rows-1, :num_cols-1] += (hf[1:num_rows, 1:num_cols] - hf[:num_rows-1, :num_cols-1] > slope_threshold)
+            move_corners[1:num_rows, 1:num_cols] -= (hf[:num_rows-1, :num_cols-1] - hf[1:num_rows, 1:num_cols] > slope_threshold)
+            
+            xx += (move_x + move_corners*(move_x == 0)) * horizontal_scale
+            yy += (move_y + move_corners*(move_y == 0)) * horizontal_scale
+
+        # 创建网格顶点
+        vertices = np.zeros((num_rows*num_cols, 3), dtype=np.float32)
+        vertices[:, 0] = xx.flatten() - config.border_size 
+        vertices[:, 1] = yy.flatten() - config.border_size
+        vertices[:, 2] = hf.flatten() * vertical_scale
         
-        x_grid = x_indices.flatten() * config.horizontal_scale - config.border_size
-        y_grid = y_indices.flatten() * config.horizontal_scale - config.border_size
-        z_grid = hf.flatten() * config.vertical_scale
+        # 创建三角形索引 (IsaacGym 拓扑结构)
+        # 使用矢量化生成以提高效率
+        ridx, cidx = np.meshgrid(np.arange(num_rows - 1), np.arange(num_cols - 1), indexing='ij')
         
-        vertices = np.column_stack([x_grid, y_grid, z_grid]).astype(np.float32)
+        v00 = ridx * num_cols + cidx
+        v01 = ridx * num_cols + cidx + 1
+        v10 = (ridx + 1) * num_cols + cidx
+        v11 = (ridx + 1) * num_cols + cidx + 1
         
-        # 2. 生成三角形 (Vectorized)
-        ridx, cidx = np.meshgrid(np.arange(rows - 1), np.arange(cols - 1), indexing='ij')
+        # 构建两个三角形: (v00, v11, v01) 和 (v00, v10, v11)
+        # 注意：这里的连接顺序需与 convert_heightfield_to_trimesh 保持一致
+        t1 = np.stack([v00, v11, v01], axis=-1)
+        t2 = np.stack([v00, v10, v11], axis=-1)
         
-        # 索引计算: idx = i * cols + j
-        v00 = ridx * cols + cidx
-        v01 = ridx * cols + cidx + 1
-        v10 = (ridx + 1) * cols + cidx
-        v11 = (ridx + 1) * cols + cidx + 1
-        
-        # Triangle 1: Top-Left (00), Bottom-Left (10), Top-Right (01)
-        # 这种连线方式是 IsaacGym/PhysX 默认的
-        t1 = np.stack([v00, v10, v01], axis=-1)
-        
-        # Triangle 2: Bottom-Left (10), Bottom-Right (11), Top-Right (01)
-        t2 = np.stack([v10, v11, v01], axis=-1)
-        
-        # 合并并展平
         triangles = np.concatenate([t1.reshape(-1, 3), t2.reshape(-1, 3)], axis=0).astype(np.uint32)
         
         return vertices, triangles

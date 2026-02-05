@@ -276,7 +276,7 @@ class TerrainCfg:
             如果为 None，则使用单一地形类型
         
         # 地形参数范围
-        slope_threshold: 坡度阈值（度）
+        slope_threshold: 坡度阈值（斜率，非角度）。当坡度超过此值时视为垂直墙面。
         max_init_terrain_level: 初始最大地形难度等级
         terrain_smoothness: 地形平滑度（0-1）
         
@@ -289,6 +289,11 @@ class TerrainCfg:
         measured_points_y: y方向测量点数
         measure_distance_x: x方向测量距离（米）
         measure_distance_y: y方向测量距离（米）
+
+        # 结构参数
+        step_width: 台阶/楼梯宽度（米）
+        step_depth: 台阶/楼梯深度（米）
+        env_border_size: 单个地形块的边缘平滑区域大小（米）
     """
     mesh_type: Literal["plane", "heightfield", "trimesh"] | None = "plane"
     static_friction: float = 1.0
@@ -310,7 +315,7 @@ class TerrainCfg:
     terrain_proportions: dict[str, float] | None = None
     
     # 地形参数范围
-    slope_threshold: float = 0.75
+    slope_threshold: float = 0.45
     max_init_terrain_level: int = 5
     terrain_smoothness: float = 0.0
     
@@ -328,7 +333,6 @@ class TerrainCfg:
     step_depth: float = 0.4
     
     env_border_size: float = 0.04
-    """单个地形块的边缘平滑区域大小(米) - 新增参数"""
 
 
 @configclass
