@@ -60,7 +60,7 @@ class _FileBasedMixin:
     """Extra resources to load for the object. This is used to load additional resources for the object, such as textures, materials, etc."""
 
     def __post_init__(self):
-        super().__post_init__()
+        # super().__post_init__()
 
         ## Set the mjx_mjcf_path if it is not specified.
         if self.mjx_mjcf_path is None:

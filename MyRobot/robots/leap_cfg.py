@@ -25,6 +25,7 @@ class LeapCfg(RobotCfg):
     usd_path: str = "roboverse_data/robots/Leap/usd/Leap.usd"
 
     # ==================== 物理属性 ====================
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
     enabled_gravity: bool = True
     fix_base_link: bool = True
     enabled_self_collisions: bool = False
