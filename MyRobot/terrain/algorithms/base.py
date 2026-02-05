@@ -1,5 +1,5 @@
 """地形算法基类。"""
-
+from __future__ import annotations
 from abc import ABC, abstractmethod
 import numpy as np
 from ..types import TerrainParams

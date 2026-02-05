@@ -1,5 +1,5 @@
 """地形生成器（轻量级协调类）。"""
-
+from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 import numpy as np
 from loguru import logger

@@ -35,7 +35,7 @@ from metasim.scenario.scene import SceneCfg
 from metasim.scenario.scenario import ScenarioCfg
 from metasim.utils.setup_util import get_handler
 from MyRobot.configs.task_cfg import TerrainCfg
-from MyRobot.utils.terrain_generator import TerrainGenerator
+from MyRobot.terrain.generator import TerrainGenerator
 
 log.configure(handlers=[{"sink": RichHandler(), "format": "{message}"}])
 
