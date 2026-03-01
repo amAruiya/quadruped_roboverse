@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import torch
 from loguru import logger as log
+from metasim.types import TensorState
 
 from MyRobot.configs.leap_cfg import LeapTaskCfg
 from MyRobot.tasks.base_task import BaseLocomotionTask
@@ -47,6 +48,53 @@ class LeapTask(BaseLocomotionTask):
         super().__init__(cfg, device)
 
         log.info(f"LeapTask 初始化完成: {self.num_envs} 环境")
+
+    # =========================================================================
+    # 观测生成 (覆盖父类以支持特权观测)
+    # =========================================================================
+
+    def _observation(self, env_states: TensorState) -> torch.Tensor:
+        """计算观测向量，并构建特权观测。"""
+        # 1. 获取基础观测 (Proprioception) - 这是 Student 只能看到的
+        proprioception = super()._observation(env_states)
+
+        # 2. 获取高度测量结果 (Privileged Feature) - Teacher 专享
+        heights = self._measure_heights()
+
+        # 3. 构建特权观测 (Critic Obs / Teacher Obs)
+        # 将 Proprioception 和 Heights 拼接
+        # 注意: 实际使用中可能还需要加入摩擦系数、质量等 Randomized Parameters
+        privileged_obs = torch.cat([proprioception, heights], dim=-1)
+
+        # 存入 extras 供 Wrapper 使用 (关键步骤)
+        self.extras["privileged_obs"] = privileged_obs
+        
+        # 备份到 buffer
+        self.privileged_obs_buf = privileged_obs
+
+        # 返回基础观测给 Policy (Student)
+        return proprioception
+
+    def _measure_heights(self) -> torch.Tensor:
+        """采样机器人周围的地形高度。
+        
+        TODO: 这是一个关键的缺失模块。如果不实现，Teacher 将无法感知地形粗糙度。
+        
+        实现思路:
+        1. 根据 self.cfg.terrain.measured_points_x/y 生成网格点偏移量。
+        2. 将偏移量应用到当前机器人位置 (self.base_pos)。
+        3. 使用 handler 或 terrain generator 查询这些点的高度。
+        4. 减去机器人当前的基座高度或地面高度，得到相对高度。
+        """
+        # 示例：假设没有高度测量，返回空或者零
+        # 实际上你应该检查 cfg.terrain.measure_heights
+        if not getattr(self.cfg.terrain, "measure_heights", False):
+            return torch.zeros(self.num_envs, 0, device=self.device)
+            
+        # 临时占位：返回全零，维度假设为 10x10=100 (需根据配置调整)
+        # dim = self.cfg.terrain.measured_points_x * self.cfg.terrain.measured_points_y
+        # return torch.zeros(self.num_envs, dim, device=self.device)
+        return torch.zeros(self.num_envs, 0, device=self.device)
 
     # =========================================================================
     # 缓冲区初始化（扩展）
@@ -125,7 +173,10 @@ class LeapTask(BaseLocomotionTask):
         if len(env_ids) == 0:
             return
 
-        env_ids_tensor = torch.tensor(env_ids, device=self.device, dtype=torch.long)
+        if isinstance(env_ids, torch.Tensor):
+            env_ids_tensor = env_ids.clone().detach().to(device=self.device, dtype=torch.long)
+        else:
+            env_ids_tensor = torch.tensor(env_ids, device=self.device, dtype=torch.long)
 
         # 重置 Leap 特有缓冲区
         self.ema_leg_power[env_ids_tensor] = 0.0

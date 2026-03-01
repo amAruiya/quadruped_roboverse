@@ -86,6 +86,11 @@ class BaseLocomotionTask(BaseTaskEnv):
         # 解析配置
         self._parse_cfg()
 
+        # 预初始化地形相关属性（BaseTaskEnv.__init__ 会调用 _get_initial_states，
+        # 此时 _init_buffers 尚未执行，需要这些属性存在以走平面模式分支）
+        self.custom_origins = False
+        self.env_origins = torch.zeros(self.num_envs, 3, device=self.device)
+
         # =====================================================================
         # Phase 2: 构建 scenario 并初始化 handler
         # =====================================================================
@@ -93,13 +98,6 @@ class BaseLocomotionTask(BaseTaskEnv):
         
         # 直接调用 BaseTaskEnv.__init__，跳过 RLTaskEnv
         BaseTaskEnv.__init__(self, scenario, device)
-        
-        # 从 BaseTaskEnv 复制的初始状态转换为 tensor
-        self._initial_states = list_state_to_tensor(
-            self.handler, 
-            self._get_initial_states(), 
-            self.device
-        )
 
         # =====================================================================
         # Phase 3: 获取 handler 信息
@@ -123,10 +121,27 @@ class BaseLocomotionTask(BaseTaskEnv):
         self._run_setup_callbacks()
 
         # =====================================================================
+        # Phase 5.5: 地形初始化（trimesh/heightfield 时自动注入）
+        #            必须在 _get_initial_states 之前执行，
+        #            以便 env_origins 可用于计算机器人出生位置。
+        # =====================================================================
+        self._setup_terrain()
+
+        # =====================================================================
+        # Phase 5.6: 生成初始状态（基于 env_origins 计算正确位置）
+        # =====================================================================
+        self._initial_states = list_state_to_tensor(
+            self.handler, 
+            self._get_initial_states(), 
+            self.device
+        )
+
+        # =====================================================================
         # Phase 6: 手动调用 reset
         # =====================================================================
         log.info("执行首次 reset...")
         self.reset(env_ids=list(range(self.num_envs)))
+        self.init_done = True
 
         # 计算观测/动作空间维度（从 RLTaskEnv 复制）
         states = self.handler.get_states()
@@ -186,9 +201,8 @@ class BaseLocomotionTask(BaseTaskEnv):
         # 否则负高度地形 (如 stairs_down) 会被地面平面遮挡
         if cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
             if cfg.scene is None:
-                from metasim.scenario.scene import SceneCfg
-                cfg.scene = SceneCfg(ground_type="none")
-                log.info(f"Initialized SceneCfg with ground_type='none' for {cfg.terrain.mesh_type} terrain")
+                cfg.create_ground = False
+                log.info(f"Disabled ground plane (create_ground=False) for {cfg.terrain.mesh_type} terrain")
             elif hasattr(cfg.scene, "ground_type") and cfg.scene.ground_type == "plane":
                 cfg.scene.ground_type = "none" 
                 log.info(f"Disabled default ground plane for {cfg.terrain.mesh_type} terrain")
@@ -274,6 +288,17 @@ class BaseLocomotionTask(BaseTaskEnv):
         self.reset_buf = torch.zeros(num_envs, dtype=torch.bool, device=device)
         self.time_out_buf = torch.zeros(num_envs, dtype=torch.bool, device=device)
         self.episode_length_buf = torch.zeros(num_envs, dtype=torch.long, device=device)
+
+        # -----------------------------------------------------------------
+        # 地形课程学习
+        # -----------------------------------------------------------------
+        self.terrain_levels = torch.zeros(num_envs, dtype=torch.long, device=device)
+        self.terrain_types = torch.zeros(num_envs, dtype=torch.long, device=device)
+        self.terrain_origins = None  # 待 _setup_terrain() 填充 (num_rows, num_cols, 3)
+        self.env_origins = torch.zeros(num_envs, 3, device=device)
+        self.custom_origins = False  # 是否使用地形系统控制放置位置
+        self.max_terrain_level = 0
+        self.init_done = False  # 首次 reset 完成前不执行课程学习更新
 
         # -----------------------------------------------------------------
         # 噪声缩放
@@ -375,32 +400,63 @@ class BaseLocomotionTask(BaseTaskEnv):
     # =========================================================================
 
     def _get_initial_states(self) -> list[dict]:
-        """生成每个环境的初始状态。"""
-        init_pos = list(self.cfg.init_state.pos)
+        """生成每个环境的初始状态。
+        
+        地形模式 (custom_origins=True):
+            pos = env_origins[i] + (random_xy_offset, init_height_offset)
+            多个机器人共享同一地形格，通过 ±1m XY 偏移避免重叠。
+        平面模式 (custom_origins=False):
+            使用配置的固定 init_state.pos，或如果有 handler._env_origin 则基于 env 网格。
+        """
+        init_height = float(self.cfg.init_state.pos[2])
         init_rot = list(self.cfg.init_state.rot)
 
         joint_names = sorted(self.cfg.init_state.default_joint_angles.keys())
-
         default_joint_pos = {
             name: self.cfg.init_state.default_joint_angles[name]
             for name in joint_names
         }
 
-        template_state = {
-            "objects": {},
-            "robots": {
-                self.robot_name: {
-                    "pos": torch.tensor(init_pos, dtype=torch.float32),
-                    "rot": torch.tensor(init_rot, dtype=torch.float32),
-                    "vel": torch.zeros(3, dtype=torch.float32),
-                    "ang_vel": torch.zeros(3, dtype=torch.float32),
-                    "dof_pos": default_joint_pos,
-                    "dof_vel": {name: 0.0 for name in joint_names},
-                }
-            },
-        }
+        states = []
+        for i in range(self.cfg.env.num_envs):
+            if self.custom_origins:
+                # 地形模式：位置来自 terrain_origins 查表 + 随机 XY 偏移 + 站立高度
+                origin = self.env_origins[i]
+                rand_xy = (torch.rand(2) * 2.0 - 1.0)  # [-1, 1] 范围随机偏移
+                pos = torch.tensor(
+                    [float(origin[0]) + float(rand_xy[0]),
+                     float(origin[1]) + float(rand_xy[1]),
+                     float(origin[2]) + init_height],
+                    dtype=torch.float32,
+                )
+            else:
+                # 平面模式：使用配置的固定位置，或用 handler 的 env 网格
+                spacing = getattr(self.cfg.env, 'env_spacing', 3.0)
+                handler_env_origins = getattr(self.handler, '_env_origin', None)
+                if handler_env_origins is not None and i < len(handler_env_origins):
+                    orig = handler_env_origins[i]
+                    pos = torch.tensor(
+                        [float(orig[0]) + spacing, float(orig[1]) + spacing, init_height],
+                        dtype=torch.float32,
+                    )
+                else:
+                    pos = torch.tensor(list(self.cfg.init_state.pos), dtype=torch.float32)
 
-        return [template_state.copy() for _ in range(self.cfg.env.num_envs)]
+            state = {
+                "objects": {},
+                "robots": {
+                    self.robot_name: {
+                        "pos": pos,
+                        "rot": torch.tensor(init_rot, dtype=torch.float32),
+                        "vel": torch.zeros(3, dtype=torch.float32),
+                        "ang_vel": torch.zeros(3, dtype=torch.float32),
+                        "dof_pos": default_joint_pos,
+                        "dof_vel": {name: 0.0 for name in joint_names},
+                    }
+                },
+            }
+            states.append(state)
+        return states
 
     # =========================================================================
     # 奖励函数
@@ -416,11 +472,13 @@ class BaseLocomotionTask(BaseTaskEnv):
             return
 
         scales = self.cfg.rewards.scales
-        for name in dir(scales):
+        # 使用 __dataclass_fields__ 避免拾取 @configclass 继承的方法 (copy, from_dict 等)
+        field_names = list(scales.__dataclass_fields__.keys()) if hasattr(scales, '__dataclass_fields__') else [n for n in dir(scales) if not n.startswith('_')]
+        for name in field_names:
             if name.startswith("_"):
                 continue
             weight = getattr(scales, name)
-            if weight == 0:
+            if not isinstance(weight, (int, float)) or weight == 0:
                 continue
 
             func_name = f"_reward_{name}"
@@ -468,6 +526,150 @@ class BaseLocomotionTask(BaseTaskEnv):
             else:
                 callback_spec(self)
             log.debug(f"执行 setup callback: {name}")
+
+    def _setup_terrain(self) -> None:
+        """自动检测配置，Generate 并注入地形（trimesh/heightfield）。
+        
+        当 cfg.terrain.mesh_type 为 "trimesh" 或 "heightfield" 时自动调用。
+        仿照 example_RMA 的 _get_env_origins()，通过 terrain_levels / terrain_types
+        将多个 env 映射到地形网格格子上，多个机器人可共享同一个地形格。
+        """
+        import copy
+        import numpy as np
+
+        mesh_type = self.cfg.terrain.mesh_type
+        if mesh_type not in ["trimesh", "heightfield"]:
+            self.terrain_generator = None
+            self.custom_origins = False
+            return
+
+        self.custom_origins = True
+        terrain_cfg = copy.copy(self.cfg.terrain)
+
+        # ------------------------------------------------------------------
+        # 1) 生成地形并注入仿真器
+        # ------------------------------------------------------------------
+        from MyRobot.terrain.generator import TerrainGenerator
+        simulator = self.cfg.simulator
+        self.terrain_generator = TerrainGenerator(terrain_cfg, simulator)
+        self.terrain_generator.bind_handler(self.handler)
+        self.terrain_generator()
+
+        # ------------------------------------------------------------------
+        # 2) 建立 terrain_origins 查找表 (num_rows, num_cols, 3)
+        # ------------------------------------------------------------------
+        self.terrain_origins = torch.from_numpy(
+            self.terrain_generator.env_origins  # shape (num_rows, num_cols, 3)
+        ).float().to(self.device)
+        self.max_terrain_level = terrain_cfg.num_rows
+
+        # ------------------------------------------------------------------
+        # 3) 将 num_envs 分配到地形网格：terrain_levels (行=难度) + terrain_types (列=类型)
+        #    与 example_RMA/envs/base/legged_robot.py _get_env_origins() 一致
+        # ------------------------------------------------------------------
+        max_init_level = terrain_cfg.max_init_terrain_level
+        if not terrain_cfg.curriculum:
+            # 非课程学习：初始均匀分布在所有难度行
+            max_init_level = terrain_cfg.num_rows - 1
+
+        self.terrain_levels = torch.fmod(
+            torch.arange(self.num_envs, device=self.device),
+            max_init_level + 1,
+        ).long()
+
+        self.terrain_types = torch.div(
+            torch.arange(self.num_envs, device=self.device),
+            max(self.num_envs / terrain_cfg.num_cols, 1),
+            rounding_mode="floor",
+        ).long().clamp(max=terrain_cfg.num_cols - 1)
+
+        # 通过 [level, type] 索引查表得到每个 env 的世界坐标
+        self.env_origins[:] = self.terrain_origins[
+            self.terrain_levels, self.terrain_types
+        ]
+
+        log.info(
+            f"_setup_terrain: {terrain_cfg.num_rows}x{terrain_cfg.num_cols} 格地形已注入, "
+            f"格子大小 {terrain_cfg.terrain_length:.1f}x{terrain_cfg.terrain_width:.1f}m, "
+            f"simulator={simulator}, curriculum={terrain_cfg.curriculum}, "
+            f"max_init_level={max_init_level}"
+        )
+
+    def _update_initial_states_with_terrain(self, env_ids: list[int] | None = None) -> None:
+        """根据 env_origins 更新指定 env 的机器人初始状态（XY + Z）。
+        
+        地形课程学习更新 terrain_levels 后调用此函数，
+        将机器人重新放置到新的地形格位置。
+
+        Args:
+            env_ids: 要更新的环境索引列表，None 表示全部
+        """
+        if not self.custom_origins or not isinstance(self._initial_states, TensorState):
+            return
+
+        init_height_offset = float(self.cfg.init_state.pos[2])
+        robot_name = self.robot_name
+        root_state = self._initial_states.robots[robot_name].root_state  # (num_envs, 13)
+
+        if env_ids is None:
+            env_ids_t = torch.arange(self.num_envs, device=self.device)
+        else:
+            env_ids_t = torch.tensor(env_ids, device=self.device, dtype=torch.long)
+
+        # 更新 XY：地形格中心 + ±1m 随机偏移
+        rand_xy = torch.rand(len(env_ids_t), 2, device=self.device) * 2.0 - 1.0
+        root_state[env_ids_t, 0] = self.env_origins[env_ids_t, 0] + rand_xy[:, 0]
+        root_state[env_ids_t, 1] = self.env_origins[env_ids_t, 1] + rand_xy[:, 1]
+        # 更新 Z：地形高度 + 配置高度偏移
+        root_state[env_ids_t, 2] = self.env_origins[env_ids_t, 2] + init_height_offset
+
+        log.debug(
+            f"_update_initial_states_with_terrain: 已更新 {len(env_ids_t)} 个 env 的 XYZ 坐标"
+        )
+
+    def _update_terrain_curriculum(self, env_ids: torch.Tensor) -> None:
+        """基于游戏启发的课程学习，调整 env 所在的地形难度等级。
+        
+        参照 example_RMA/envs/base/legged_robot.py _update_terrain_curriculum()：
+        - 行走距离 > terrain_length/4 → 升级到更难地形
+        - 行走距离 < 期望距离 × 0.5  → 降级到更简单地形
+        - 通关最高难度的机器人随机分配到任意等级
+
+        Args:
+            env_ids: 被重置的环境索引
+        """
+        if not self.init_done or not self.custom_origins:
+            return
+
+        # 计算机器人从出生点走出的距离
+        distance = torch.norm(
+            self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1
+        )
+
+        terrain_length = self.cfg.terrain.terrain_length
+
+        # 走得足够远 → 升级到更难地形
+        move_up = distance > terrain_length / 4.0
+
+        # 走得太近（未达到速度命令期望的一半距离）→ 降级
+        move_down = (
+            distance < torch.norm(self.commands[env_ids, :2], dim=1)
+            * self.max_episode_length * self.dt * 0.5
+        ) * ~move_up
+
+        self.terrain_levels[env_ids] += 1 * move_up.long() - 1 * move_down.long()
+
+        # 通关最高等级的机器人随机分配
+        self.terrain_levels[env_ids] = torch.where(
+            self.terrain_levels[env_ids] >= self.max_terrain_level,
+            torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level),
+            torch.clip(self.terrain_levels[env_ids], 0),
+        )
+
+        # 根据新 level 重新查表更新 env_origins
+        self.env_origins[env_ids] = self.terrain_origins[
+            self.terrain_levels[env_ids], self.terrain_types[env_ids]
+        ]
 
     def _run_reset_callbacks(self, env_ids: torch.Tensor) -> None:
         """运行 reset 回调。"""
@@ -568,17 +770,17 @@ class BaseLocomotionTask(BaseTaskEnv):
         # 重置 episode 计数器
         self._episode_steps[env_ids] = 0
 
-        # 设置状态（使用传入的 states 或默认初始状态）
+        # 重置环境特定状态（含地形课程学习，会更新 _initial_states 中的位置）
+        env_ids_tensor = torch.tensor(env_ids, device=self.device, dtype=torch.long)
+        self._reset_idx(env_ids_tensor)
+
+        # 设置状态（使用传入的 states 或经课程学习更新后的默认初始状态）
         states_to_set = self._initial_states if states is None else states
         self.handler.set_states(states=states_to_set, env_ids=env_ids)
 
         # 更新内部状态
         env_states = self.handler.get_states()
         self._update_buffers_from_states(env_states)
-        
-        # 重置环境特定状态
-        env_ids_tensor = torch.tensor(env_ids, device=self.device, dtype=torch.long)
-        self._reset_idx(env_ids_tensor)
         
         # 生成观测
         obs = self._observation(env_states)
@@ -589,6 +791,12 @@ class BaseLocomotionTask(BaseTaskEnv):
         """重置指定环境的内部状态。"""
         if len(env_ids) == 0:
             return
+
+        # 地形课程学习：根据训练表现调整难度等级
+        if self.cfg.terrain.curriculum and self.custom_origins:
+            self._update_terrain_curriculum(env_ids)
+            # 更新这些 env 的初始状态位置（XYZ 都可能改变）
+            self._update_initial_states_with_terrain(env_ids.tolist())
 
         # 重置命令
         self._resample_commands(env_ids)
@@ -630,7 +838,6 @@ class BaseLocomotionTask(BaseTaskEnv):
         """执行一步仿真。"""
         clip_actions = self.cfg.observation.normalization.clip_actions
         self.actions = torch.clamp(actions, -clip_actions, clip_actions)
-        log.debug(f"Step {self.common_step_counter}: 动作序列 actions={self.actions[0].tolist()}")
         self.actions = self._run_pre_step_callbacks(self.actions)
 
         for i in range(self.cfg.sim.decimation):
@@ -704,11 +911,15 @@ class BaseLocomotionTask(BaseTaskEnv):
         robot_state = env_states.robots[self.robot_name]
 
         self.root_states = robot_state.root_state
+        self.base_pos = self.root_states[:, :3]
         self.dof_pos = robot_state.joint_pos
         self.dof_vel = robot_state.joint_vel
 
-        if hasattr(env_states, "contact_forces") and env_states.contact_forces is not None:
-            self.contact_forces = env_states.contact_forces.get(self.robot_name, self.contact_forces)
+        # 从 robot_state.extra 中读取接触力（IsaacGym 等后端将其存储于此）
+        if hasattr(robot_state, "extra") and robot_state.extra is not None:
+            contact = robot_state.extra.get("contact_forces", None)
+            if contact is not None:
+                self.contact_forces = contact
 
     def _update_commands(self) -> None:
         """更新命令（周期性重采样）。"""

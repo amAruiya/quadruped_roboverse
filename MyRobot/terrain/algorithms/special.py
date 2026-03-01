@@ -139,9 +139,11 @@ class SteppingStonesAlgorithm(TerrainAlgorithm):
         )
         
         # RMA: max_height=0.
+        # 确保 stone_size 至少为 1 像素（即 horizontal_scale 米），否则 randint(0, 0) 报错
+        stone_size = max(params.stepping_stones_size, horizontal_scale * 2)
         terrain_utils.stepping_stones_terrain(
             sub_terrain,
-            stone_size=params.stepping_stones_size,
+            stone_size=stone_size,
             stone_distance=params.stone_distance,
             max_height=0.,
             platform_size=params.platform_size

@@ -41,7 +41,7 @@ class EnvCfg:
         send_timeouts: 是否发送 timeout 信号
     """
 
-    num_envs: int = 4096
+    num_envs: int = 40
     episode_length_s: float = 20.0
     env_spacing: float = 3.0
     send_timeouts: bool = True

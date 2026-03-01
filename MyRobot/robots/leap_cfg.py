@@ -27,7 +27,7 @@ class LeapCfg(RobotCfg):
     # ==================== 物理属性 ====================
     scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
     enabled_gravity: bool = True
-    fix_base_link: bool = True
+    fix_base_link: bool = False
     enabled_self_collisions: bool = False
 
     # ==================== 仿真器特定配置 ====================

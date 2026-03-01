@@ -76,6 +76,15 @@ class TerrainConfigParser:
             return
         
         proportions = self.cfg.terrain_proportions
+
+        # 兼容列表格式：按顺序映射到默认地形类型
+        if isinstance(proportions, (list, tuple)):
+            default_types = ["flat", "rough", "slope", "stairs_up", "stairs_down", "discrete", "stepping_stones"]
+            proportions = {
+                t: float(v)
+                for t, v in zip(default_types, proportions)
+            }
+
         terrain_names = list(proportions.keys())
         terrain_probs = np.array(list(proportions.values()))
         

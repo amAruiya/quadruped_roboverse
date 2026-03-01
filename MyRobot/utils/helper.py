@@ -15,6 +15,23 @@ from metasim.utils.setup_util import get_robot
 from MyRobot.configs.task_cfg import BaseTaskCfg
 
 
+def set_seed(seed: int) -> None:
+    """设置全局随机种子，确保实验可复现。
+
+    Args:
+        seed: 随机种子值
+    """
+    import random
+    import numpy as np
+    import torch
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def task_cfg_to_scenario(task_cfg: BaseTaskCfg) -> ScenarioCfg:
     """从任务配置构建场景配置。
 
@@ -40,6 +57,12 @@ def task_cfg_to_scenario(task_cfg: BaseTaskCfg) -> ScenarioCfg:
         # 单个 RobotCfg 对象
         robots = [task_cfg.robots]
 
+    # 地形模式下将 env_spacing 置零，使 IsaacGym env bounds 退化，
+    # 机器人位置完全由地形系统的 terrain_origins 控制（与 example_RMA 一致）
+    env_spacing = task_cfg.env.env_spacing
+    if hasattr(task_cfg, "terrain") and task_cfg.terrain.mesh_type in ["trimesh", "heightfield"]:
+        env_spacing = 0.0
+
     scenario = ScenarioCfg(
         # 机器人配置
         robots=robots,
@@ -54,7 +77,7 @@ def task_cfg_to_scenario(task_cfg: BaseTaskCfg) -> ScenarioCfg:
         
         # 仿真参数
         num_envs=task_cfg.env.num_envs,
-        env_spacing=task_cfg.env.env_spacing,
+        env_spacing=env_spacing,
         decimation=task_cfg.sim.decimation,
         gravity=task_cfg.sim.gravity,
         

@@ -10,6 +10,7 @@ from __future__ import annotations
 from metasim.utils import configclass
 from MyRobot.configs.task_cfg import (
     AssetCfg,
+    CallbacksCfg,
     SimCfg,
     BaseTaskCfg,
     CommandRanges,
@@ -20,6 +21,10 @@ from MyRobot.configs.task_cfg import (
     RewardScales,
     RewardsCfg,
     TerrainCfg,
+)
+from MyRobot.callbacks.terminate import (
+    undesired_contact_termination,
+    root_height_below_minimum,
 )
 
 @configclass
@@ -142,6 +147,18 @@ class LeapTaskCfg(BaseTaskCfg):
         foot_name="FOOT",
         penalize_contacts_on=["calf"],
         terminate_after_contacts_on=["base", "thigh"],
+    )
+
+    callbacks: CallbacksCfg = CallbacksCfg(
+        terminate={
+            "undesired_contact": (undesired_contact_termination, {
+                "contact_body_names": ["base", "thigh"],
+                "force_threshold": 1.0,
+            }),
+            "root_height": (root_height_below_minimum, {
+                "min_height": 0.25,
+            }),
+        },
     )
 
     robots: str = "leap"  # 将在 task_cfg_to_scenario 中解析为 RobotCfg
