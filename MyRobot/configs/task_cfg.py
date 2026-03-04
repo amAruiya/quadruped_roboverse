@@ -39,12 +39,16 @@ class EnvCfg:
         episode_length_s: 单集最大时长（秒）
         env_spacing: 环境间距（米）
         send_timeouts: 是否发送 timeout 信号
+        orientation_termination_threshold: 姿态终止阈值，
+            当 |projected_gravity_z| < 该值时视为翻倒并终止。
+            设为 None 可禁用此检查。
     """
 
     num_envs: int = 40
     episode_length_s: float = 20.0
     env_spacing: float = 3.0
     send_timeouts: bool = True
+    orientation_termination_threshold: float | None = 0.5
 
 
 @configclass
@@ -69,24 +73,18 @@ class ControlCfg:
     Attributes:
         control_type: 控制类型（"P": 位置, "V": 速度, "T": 扭矩）
         action_scale: 动作缩放因子
-        action_clip: 动作裁剪范围
         action_offset: 是否使用默认关节位置作为偏移
-        stiffness: PD 控制器刚度（按关节名称模式匹配）
-        damping: PD 控制器阻尼（按关节名称模式匹配）
-        torque_limits_factor: 扭矩限制缩放因子
-        soft_joint_pos_limit_factor: 软关节位置限制因子
-        soft_joint_vel_limit_factor: 软关节速度限制因子
+        stiffness: PD 控制器刚度（按关节名称模式匹配）。
+            如果为 None，则从 RobotCfg.actuators 自动读取。
+        damping: PD 控制器阻尼（按关节名称模式匹配）。
+            如果为 None，则从 RobotCfg.actuators 自动读取。
     """
 
     control_type: Literal["P", "V", "T"] = "P"
     action_scale: float = 0.25
-    action_clip: float = 100.0
     action_offset: bool = True
     stiffness: dict[str, float] | None = None
     damping: dict[str, float] | None = None
-    torque_limits_factor: float = 1.0
-    soft_joint_pos_limit_factor: float = 0.9
-    soft_joint_vel_limit_factor: float = 0.9
 
 
 @configclass
@@ -98,7 +96,8 @@ class InitStateCfg:
         rot: 初始根旋转四元数 (x, y, z, w)
         lin_vel: 初始线速度 (x, y, z)
         ang_vel: 初始角速度 (x, y, z)
-        default_joint_angles: 默认关节角度字典 {joint_name: angle}
+        default_joint_angles: 默认关节角度字典 {joint_name: angle}。
+            如果为 None，则从 RobotCfg.default_joint_positions 自动读取。
     """
 
     pos: tuple[float, float, float] = (0.0, 0.0, 0.5)
@@ -312,7 +311,7 @@ class TerrainCfg:
     border_size: float = 2.0
     
     # 地形类型比例
-    terrain_proportions: dict[str, float] | None = None
+    terrain_proportions: dict[str, float] | list[float] | None = None
     
     # 地形参数范围
     slope_threshold: float = 0.45

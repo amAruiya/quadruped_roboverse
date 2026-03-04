@@ -186,8 +186,8 @@ class TerrainConfigParser:
                 terrain_type=t_type,
                 difficulty=difficulty,
                 step_height=abs(step_height),
-                step_width=getattr(self.cfg, 'step_width', 0.31),
-                step_depth=getattr(self.cfg, 'step_depth', 0.31),
+                step_width=getattr(self.cfg, 'step_width', 0.4),
+                step_depth=getattr(self.cfg, 'step_depth', 0.4),
                 platform_size=3.0,
             )
             
@@ -196,8 +196,8 @@ class TerrainConfigParser:
                 terrain_type=terrain_type,
                 difficulty=difficulty,
                 step_height=abs(step_height),
-                step_width=getattr(self.cfg, 'step_width', 0.31),
-                step_depth=getattr(self.cfg, 'step_depth', 0.31),
+                step_width=getattr(self.cfg, 'step_width', 0.4),
+                step_depth=getattr(self.cfg, 'step_depth', 0.4),
                 platform_size=3.0,
             )
         

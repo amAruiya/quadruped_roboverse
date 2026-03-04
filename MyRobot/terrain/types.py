@@ -79,8 +79,8 @@ class TerrainParams:
     difficulty: float = 0.5
     slope: float = 0.0
     step_height: float = 0.0
-    step_width: float = 0.31
-    step_depth: float = 0.26
+    step_width: float = 0.4
+    step_depth: float = 0.4
     discrete_obstacles_height: float = 0.0
     stepping_stones_size: float = 1.0
     stone_distance: float = 0.1

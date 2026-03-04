@@ -61,7 +61,8 @@ def train(args):
     train_cfg = TrainCfg()
 
     # 应用 CLI 参数覆盖 (简单示例)
-    task_cfg.env.num_envs = args.num_envs
+    if args.num_envs is not None:
+        task_cfg.env.num_envs = args.num_envs
     task_cfg.headless = args.headless
     if args.experiment_name:
         train_cfg.runner.experiment_name = args.experiment_name
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MyRobot 训练脚本")
     
     parser.add_argument("--task", type=str, default="leap", help="任务名称 (例如: leap)")
-    parser.add_argument("--num_envs", type=int, default=4096, help="并行环境数量")
+    parser.add_argument("--num_envs", type=int, default=None, help="并行环境数量 (默认使用配置文件中的值)")
     parser.add_argument("--seed", type=int, default=1, help="随机种子")
     parser.add_argument("--headless", action="store_true", help="无头模式运行仿真")
     parser.add_argument("--device", type=str, default=None, help="计算设备 (cpu/cuda:0)")

@@ -38,6 +38,7 @@
 | `episode_length_s` | `float` | `20.0` | 单集最大时长（秒） |
 | `env_spacing` | `float` | `3.0` | 环境间距（米） |
 | `send_timeouts` | `bool` | `True` | 是否发送 timeout 信号给 RL 算法 |
+| `orientation_termination_threshold` | `float \| None` | `0.5` | 姿态终止阈值，\|projected_gravity_z\| < 此值时视为翻倒。设为 `None` 可禁用 |
 
 ### 1.2 `SimCfg` — 仿真参数
 
@@ -53,13 +54,9 @@
 |------|------|--------|------|
 | `control_type` | `Literal["P","V","T"]` | `"P"` | 控制类型：位置 / 速度 / 扭矩 |
 | `action_scale` | `float` | `0.25` | 动作缩放因子 |
-| `action_clip` | `float` | `100.0` | 动作裁剪范围 |
 | `action_offset` | `bool` | `True` | 是否以默认关节位置为动作零点偏移 |
-| `stiffness` | `dict[str,float] \| None` | `None` | PD 刚度，按关节名模式匹配，如 `{"HAA": 28.0}` |
-| `damping` | `dict[str,float] \| None` | `None` | PD 阻尼，同上 |
-| `torque_limits_factor` | `float` | `1.0` | 扭矩限制的缩放因子 |
-| `soft_joint_pos_limit_factor` | `float` | `0.9` | 软关节位置限制因子（< 1 收缩限制） |
-| `soft_joint_vel_limit_factor` | `float` | `0.9` | 软关节速度限制因子 |
+| `stiffness` | `dict[str,float] \| None` | `None` | PD 刚度，按关节名模式匹配。**为 None 时自动从 RobotCfg.actuators 读取** |
+| `damping` | `dict[str,float] \| None` | `None` | PD 阻尼，同上。**为 None 时自动从 RobotCfg.actuators 读取** |
 
 ### 1.4 `InitStateCfg` — 初始状态
 
@@ -69,7 +66,7 @@
 | `rot` | `tuple[float,float,float,float]` | `(0,0,0,1)` | 根体初始四元数 (x, y, z, w) |
 | `lin_vel` | `tuple[float,float,float]` | `(0,0,0)` | 初始线速度 |
 | `ang_vel` | `tuple[float,float,float]` | `(0,0,0)` | 初始角速度 |
-| `default_joint_angles` | `dict[str,float] \| None` | `None` | 默认关节角度字典 `{joint_name: rad}` |
+| `default_joint_angles` | `dict[str,float] \| None` | `None` | 默认关节角度 `{joint_name: rad}`。**为 None 时自动从 RobotCfg.default_joint_positions 读取** |
 
 ### 1.5 `CommandRanges` — 命令范围
 
@@ -171,7 +168,7 @@
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `terrain_proportions` | `dict[str,float] \| None` | `None` | 各地形类型比例，如 `{"flat":0.2, "rough":0.3}` |
+| `terrain_proportions` | `dict[str,float] \| list[float] \| None` | `None` | 各地形类型比例。字典如 `{"flat":0.2, "rough":0.3}`，列表按顺序 `[flat, rough, slope, stairs_up, stairs_down, discrete, stepping_stones]` |
 | `slope_threshold` | `float` | `0.45` | 坡度阈值，超过视为垂直墙面 |
 | `max_init_terrain_level` | `int` | `5` | 初始最大地形难度等级 |
 | `terrain_smoothness` | `float` | `0.0` | 地形平滑度 (0-1) |
@@ -350,8 +347,8 @@
 | 子配置 | 关键覆盖值 |
 |--------|-----------|
 | `sim` | `dt=0.001`, `decimation=4` → 控制频率 250Hz |
-| `init_state` | `pos=(0,0,0.365)`, 12 关节默认角度 |
-| `control` | `stiffness=28.0`, `damping=0.8`, `action_scale=0.25` |
+| `init_state` | `pos=(0,0,0.365)`, default_joint_angles 自动从 RobotCfg 读取 |
+| `control` | stiffness/damping 自动从 RobotCfg.actuators 读取, `action_scale=0.25` |
 | `terrain` | `mesh_type="trimesh"`, `curriculum=True`, 7 类地形比例 |
 | `commands` | `lin_vel_x=(-1.5,1.5)`, `lin_vel_y=(-1.0,1.0)` |
 | `domain_rand` | 全部启用：摩擦/质量/PD增益/外推力 |
@@ -500,8 +497,8 @@ Leap 四足机器人（4 腿 × 3 关节 = 12 DOF）的硬件级配置。
 | `difficulty` | `float` | `0.5` | 难度 (0-1) |
 | `slope` | `float` | `0.0` | 斜坡坡度 |
 | `step_height` | `float` | `0.0` | 台阶高度（米） |
-| `step_width` | `float` | `0.31` | 台阶宽度（米） |
-| `step_depth` | `float` | `0.26` | 台阶深度（米） |
+| `step_width` | `float` | `0.4` | 台阶宽度（米） |
+| `step_depth` | `float` | `0.4` | 台阶深度（米） |
 | `discrete_obstacles_height` | `float` | `0.0` | 离散障碍物高度 |
 | `stepping_stones_size` | `float` | `1.0` | 踏脚石尺寸 |
 | `stone_distance` | `float` | `0.1` | 踏脚石间距 |

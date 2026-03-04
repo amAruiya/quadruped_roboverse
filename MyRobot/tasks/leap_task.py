@@ -88,7 +88,7 @@ class LeapTask(BaseLocomotionTask):
         """
         # 示例：假设没有高度测量，返回空或者零
         # 实际上你应该检查 cfg.terrain.measure_heights
-        if not getattr(self.cfg.terrain, "measure_heights", False):
+        if not self.cfg.terrain.measure_heights:
             return torch.zeros(self.num_envs, 0, device=self.device)
             
         # 临时占位：返回全零，维度假设为 10x10=100 (需根据配置调整)
@@ -213,7 +213,7 @@ class LeapTask(BaseLocomotionTask):
                     current_leg_power[:, i] = torch.sum(joint_power[:, indices], dim=1)
 
         # 指数移动平均
-        ema_alpha = getattr(self.cfg.rewards, "ema_alpha", 0.4)
+        ema_alpha = self.cfg.rewards.ema_alpha
         self.ema_leg_power.mul_(1.0 - ema_alpha).add_(current_leg_power * ema_alpha)
 
         # 计算 EMA 功率的方差
@@ -262,7 +262,7 @@ class LeapTask(BaseLocomotionTask):
             return torch.zeros(self.num_envs, device=self.device)
 
         # 获取配置的最大接触力
-        max_contact_force = getattr(self.cfg.rewards, "max_contact_force", 100.0)
+        max_contact_force = self.cfg.rewards.max_contact_force
 
         # 计算足部接触力
         feet_forces = self.contact_forces[:, self.feet_indices, :]
@@ -285,7 +285,7 @@ class LeapTask(BaseLocomotionTask):
         参考：example_RMA/envs/base/legged_robot.py::_reward_dof_pos_limits
         """
         # 获取软限位比例
-        soft_dof_pos_limit = getattr(self.cfg.rewards, "soft_dof_pos_limit", 0.9)
+        soft_dof_pos_limit = self.cfg.rewards.soft_dof_pos_limit
 
         # TODO: 从 handler 获取关节限位
         # 目前使用简化实现
@@ -300,7 +300,7 @@ class LeapTask(BaseLocomotionTask):
 
         参考：example_RMA/envs/base/legged_robot.py（rewards.base_height_target）
         """
-        target_height = getattr(self.cfg.rewards, "base_height_target", 0.355)
+        target_height = self.cfg.rewards.base_height_target
         height_error = torch.square(self.base_pos[:, 2] - target_height)
 
         return height_error

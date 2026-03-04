@@ -95,14 +95,17 @@ class BaseLocomotionTask(BaseTaskEnv):
         # Phase 2: 构建 scenario 并初始化 handler
         # =====================================================================
         scenario = task_cfg_to_scenario(cfg)
-        
+
+        # 提前设置 self.robot，供 _get_initial_states() 在 BaseTaskEnv.__init__ 中使用
+        self.robot = scenario.robots[0]
+
         # 直接调用 BaseTaskEnv.__init__，跳过 RLTaskEnv
         BaseTaskEnv.__init__(self, scenario, device)
 
         # =====================================================================
         # Phase 3: 获取 handler 信息
         # =====================================================================
-        self.robot = scenario.robots[0]  # RLTaskEnv 需要
+        # self.robot 已在 Phase 2 设置
         self.dof_names = self.handler.get_joint_names(self.robot_name, sort=True)
         self.num_dof = len(self.dof_names)
         
@@ -326,28 +329,55 @@ class BaseLocomotionTask(BaseTaskEnv):
         )
 
     def _compute_default_dof_pos(self) -> torch.Tensor:
-        """计算默认关节位置。"""
+        """计算默认关节位置。
+        
+        优先使用 TaskCfg.init_state.default_joint_angles（如果显式设置），
+        否则自动从 RobotCfg.default_joint_positions 读取。
+        """
         default_dof_pos = torch.zeros(self.num_dof, device=self.device)
-        if self.cfg.init_state.default_joint_angles is not None:
+
+        # 优先级 1：TaskCfg 中的显式配置
+        joint_angles = self.cfg.init_state.default_joint_angles
+
+        # 优先级 2：RobotCfg.default_joint_positions
+        if joint_angles is None and hasattr(self.robot, "default_joint_positions"):
+            joint_angles = self.robot.default_joint_positions
+            log.debug("default_joint_angles 未在 TaskCfg 中设置，自动从 RobotCfg.default_joint_positions 读取")
+
+        if joint_angles is not None:
             for i, name in enumerate(self.dof_names):
-                if name in self.cfg.init_state.default_joint_angles:
-                    default_dof_pos[i] = self.cfg.init_state.default_joint_angles[name]
+                if name in joint_angles:
+                    default_dof_pos[i] = joint_angles[name]
         return default_dof_pos.unsqueeze(0)  # (1, num_dof)
 
     def _init_pd_gains(self) -> None:
-        """初始化 PD 增益。"""
-        if self.cfg.control.stiffness is None or self.cfg.control.damping is None:
-            return
+        """初始化 PD 增益。
+        
+        优先使用 TaskCfg.control.stiffness/damping（按关节名模式匹配），
+        否则自动从 RobotCfg.actuators 中按关节名精确匹配读取。
+        """
+        stiffness = self.cfg.control.stiffness
+        damping = self.cfg.control.damping
 
-        for i, name in enumerate(self.dof_names):
-            for pattern, kp in self.cfg.control.stiffness.items():
-                if pattern in name:
-                    self.p_gains[:, i] = kp
-                    break
-            for pattern, kd in self.cfg.control.damping.items():
-                if pattern in name:
-                    self.d_gains[:, i] = kd
-                    break
+        if stiffness is not None and damping is not None:
+            # 从 TaskCfg 中按模式匹配
+            for i, name in enumerate(self.dof_names):
+                for pattern, kp in stiffness.items():
+                    if pattern in name:
+                        self.p_gains[:, i] = kp
+                        break
+                for pattern, kd in damping.items():
+                    if pattern in name:
+                        self.d_gains[:, i] = kd
+                        break
+        elif hasattr(self.robot, "actuators") and self.robot.actuators:
+            # 从 RobotCfg.actuators 中按精确关节名读取
+            log.debug("stiffness/damping 未在 TaskCfg 中设置，自动从 RobotCfg.actuators 读取")
+            for i, name in enumerate(self.dof_names):
+                if name in self.robot.actuators:
+                    act = self.robot.actuators[name]
+                    self.p_gains[:, i] = act.stiffness
+                    self.d_gains[:, i] = act.damping
 
     def _get_feet_indices(self) -> torch.Tensor:
         """获取足部 body 索引。"""
@@ -411,11 +441,15 @@ class BaseLocomotionTask(BaseTaskEnv):
         init_height = float(self.cfg.init_state.pos[2])
         init_rot = list(self.cfg.init_state.rot)
 
-        joint_names = sorted(self.cfg.init_state.default_joint_angles.keys())
-        default_joint_pos = {
-            name: self.cfg.init_state.default_joint_angles[name]
-            for name in joint_names
-        }
+        # 优先 TaskCfg，否则从 RobotCfg.default_joint_positions 读取
+        joint_angles = self.cfg.init_state.default_joint_angles
+        if joint_angles is None and hasattr(self.robot, "default_joint_positions"):
+            joint_angles = self.robot.default_joint_positions
+        if joint_angles is None:
+            joint_angles = {}
+
+        joint_names = sorted(joint_angles.keys())
+        default_joint_pos = {name: joint_angles[name] for name in joint_names}
 
         states = []
         for i in range(self.cfg.env.num_envs):
@@ -932,7 +966,12 @@ class BaseLocomotionTask(BaseTaskEnv):
 
     def _check_termination(self) -> None:
         """检查终止条件。"""
-        self.reset_buf = torch.abs(self.projected_gravity[:, 2]) < 0.5
+        # 姿态终止：当 |projected_gravity_z| < 阈值时视为翻倒
+        threshold = self.cfg.env.orientation_termination_threshold
+        if threshold is not None:
+            self.reset_buf = torch.abs(self.projected_gravity[:, 2]) < threshold
+        else:
+            self.reset_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.reset_buf |= self._run_terminate_callbacks()
 
     # =========================================================================

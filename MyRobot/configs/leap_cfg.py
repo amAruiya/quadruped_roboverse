@@ -77,38 +77,12 @@ class LeapTaskCfg(BaseTaskCfg):
 
     init_state: InitStateCfg = InitStateCfg(
         pos=(0.0, 0.0, 0.365),
-        default_joint_angles={
-            # 左前腿
-            "LF_HAA": -0.2,
-            "LF_HFE": 0.64,
-            "LF_KFE": -1.27,
-            # 左后腿
-            "LH_HAA": -0.2,
-            "LH_HFE": 0.64,
-            "LH_KFE": -1.27,
-            # 右前腿
-            "RF_HAA": 0.2,
-            "RF_HFE": 0.64,
-            "RF_KFE": -1.27,
-            # 右后腿
-            "RH_HAA": 0.2,
-            "RH_HFE": 0.64,
-            "RH_KFE": -1.27,
-        },
+        # default_joint_angles 已移除，自动从 RobotCfg.default_joint_positions 读取
     )
 
     control: ControlCfg = ControlCfg(
         control_type="P",
-        stiffness={
-            "HAA": 28.0,
-            "HFE": 28.0,
-            "KFE": 28.0,
-        },
-        damping={
-            "HAA": 0.8,
-            "HFE": 0.8,
-            "KFE": 0.8,
-        },
+        # stiffness/damping 已移除，自动从 RobotCfg.actuators 读取
         action_scale=0.25,
         action_offset=True,
     )
@@ -116,7 +90,7 @@ class LeapTaskCfg(BaseTaskCfg):
     terrain: TerrainCfg = TerrainCfg(
         mesh_type="trimesh",
         curriculum=True,
-        # terrain_proportions: [smooth_slope, rough_slope, stairs_up, stairs_down, discrete, stepping_stones, gaps]
+        # terrain_proportions: [flat, rough, slope, stairs_up, stairs_down, discrete, stepping_stones]
         terrain_proportions=[0.3, 0.3, 0.0, 0.1, 0.1, 0.1, 0.1],
     )
 
